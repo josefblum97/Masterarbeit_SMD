@@ -17,7 +17,7 @@ Der Scholarly Migration Datensatz (Version Stand Januar 2025) wurden von folgend
 🔗 https://github.com/MPIDR/Global-flows-and-rates-of-international-migration-of-scholars/tree/master/data_input
 
 Der Varieties of Democracy (V-Dem) (Country-Year: V-Dem Full+Others: Version Stand 2025) wurde von folgender Website bezogen:
-🔗 https://www.v-dem.net/data/the-v-dem-dataset/
+https://www.v-dem.net/data/the-v-dem-dataset/
 
 ## Zitation
 
