@@ -7,7 +7,8 @@ Dieses Repository enthält den Analysecode und ergänzende Materialien zur explo
 - `Methodik_Forschergruppen`: R-Skripte zur Datenaufbereitung, Analyse und Visualisierung
 - `Expose Ansatz`: Zusätzliche R-Skripte der anfänglichen Datenanalyse
 - `figure-html`: Abbildungen für die Masterarbeit
-- `Regressionsergebnisse`: Ergebnisdaten 
+- `Regressionsergebnisse`: Ergebnisdaten
+- `references_migration.bib`: Alle in der Arbeit verwendeten Quellen
 
 ## Reproduzierbarkeit
 
