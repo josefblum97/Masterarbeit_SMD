@@ -1,0 +1,3168 @@
+---
+title: "Methodik_SMD"
+subtitle: "Methodik der Masterarbeit"
+authors: 
+  - name: "Josef Blum"
+    affiliations:
+      - ref: uf
+affiliations:
+   - id: uf 
+     name: "University of Freiburg" 
+date: last-modified
+date-format: long
+bibliography: "references_migration.bib"
+link-citations: true
+execute: 
+  freeze: true
+  cache: true
+highlight-style: espresso
+format: 
+  pdf: 
+    papersize: a4
+    theme:
+      light: journal
+      dark: darkly
+    colorlinks: true
+    engine: knitr
+    execute: 
+      echo: false
+      warning: false
+  html:
+    toc: true
+    toc-depth: 3
+    theme:
+      light: journal
+      dark: darkly
+    execute: 
+      echo: false 
+      warning: false
+      code-fold: True
+  docx: 
+    toc: true 
+    toc-depth: 3 
+    reference-doc: "word_style.docx"
+    echo: false
+    warning: false
+editor: visual
+---
+
+```{r}
+library(readr)
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+#| label: Daten hochladen 
+##iso3code, region_value, incomeLevel_id
+dfcountries <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_input/dfcountries.csv")
+#View(dfcountries)
+
+
+## Population pro Jahr 
+### countryiso3code, date, value 
+world_bank_popuplation_ffilled <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_input/world_bank_popuplation_ffilled.csv")
+#View(world_bank_popuplation_ffilled)
+
+
+### Comparion from 1997-2024 with Scopus, openalex and orcid (countrycode and countryname)
+### number_of_authors_ and share_of_mobile_authors_ with _scopus, _openalex and _orcid 
+X3way_comparison <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/3way_comparison.csv")
+#View(X3way_comparison)
+
+
+### countrycode, year, gdp_per_capita, population, netmig_openalex, net_scopus, region, incomelevel
+dfmerged_openalex_scopus_country <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/dfmerged_openalex_scopus_country.csv")
+#View(dfmerged_openalex_scopus_country)
+
+
+### Enriched openalex with Countrycode, netmigration, incomelevel, gdp_per_capita, region, incomelevel and population 
+# Country level yearly dataset on international emigration, immigration, net migration rates and other variables based on OpenAlex.
+openalex_data <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/openalex_2024_V1_scholarlymigration_country_enriched.csv")
+#View(openalex_2024_V1_scholarlymigration_country_enriched)
+
+# Country level yearly “fow” dataset on international emigration, immigration, net migration rates and other variables based on OpenAlex.
+openalex_flows <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/openalex_2024_V1_scholarlymigration_countryflows_enriched.csv")
+
+
+### Enriched scopus with Countrycode, netmigration, incomelevel, gdp_per_capita, region, incomelevel and population 
+# Country level yearly dataset on international emigration, immigration, net migration rates and other variables based on Scopus.
+scopus_data <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/scopus_2024_V1_scholarlymigration_country_enriched.csv")
+#View(scopus_2024_V1_scholarlymigration_country_enriched)
+
+# Country level yearly “fow” dataset on international emigration, immigration, net migration rates and other variables based on Scopus.
+scopus_flows <- 
+  read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/scopus_2024_V1_scholarlymigration_countryflows_enriched.csv")
+
+
+```
+
+```{r}
+#| echo: true
+#| include: false
+#| eval: true
+#| label: "V-dem Filter und Selektion"
+
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("readr", quietly = TRUE)) {
+  install.packages("readr")
+}
+
+library(dplyr)
+library(readr)
+library(tidyr)
+
+
+# Laden des Datensatzes
+V_Dem_CY_Core_v14 <- read_csv("V-dem/V-Dem-CY-Core-v14.csv")
+
+# Filterung des Datensatzes auf die Jahre 1998 bis 2023 und Auswahl der gewünschten Variablen
+filtered_V_dem <- V_Dem_CY_Core_v14 |>
+  filter(year >= 1998 & year <= 2023) |>
+  select(country_name, country_text_id, year, v2x_libdem, v2x_polyarchy, v2x_corr, v2x_rule, v2x_freexp_altinf, v2x_civlib, v2cafres, v2cafexch, v2cainsaut, v2xca_academ) |>
+  rename(countrycode = country_text_id, countryname = country_name)
+
+# Anzeige einer Vorschau des gefilterten Datensatzes
+#View(filtered_V_dem)
+```
+
+```{r}
+#| echo: false
+#| eval: true
+#| include: false 
+#| label: Methodik Diagram 
+library(DiagrammeR)
+library(DiagrammeRsvg)
+library(rsvg)
+
+# Diagramm als SVG-String speichern
+svg_code <- grViz("
+digraph workflow {
+  graph [layout = dot, rankdir = TB, fontsize = 20]
+  
+  node [style = filled, fontname = Helvetica]
+
+  # Rechtecke (Standard)
+  data_preparation [label = 'Unilaterale Migrationsströme\\nDatenaufbereitung\\nHistogramme & Visualisierungen', shape = rectangle, fillcolor = '#A8D5BA']
+  data_validation [label = 'Vergleich OpenAlex & Scopus\\nV-dem Indizes', shape = rectangle, fillcolor = '#A8D5BA']
+  data_combination [label = 'Datenkombination\\nVariablenauswahl & Standardisierung', shape = e, fillcolor = '#A4C3B2']
+  data_visualization [label = 'Datenvisualisierung\\nMigrationssmuster, Clusteranalyse & PCA', shape = oval, fillcolor = '#6495ED']
+  income_comparison [label = 'Einkommensabhängige Muster\\n Bilaterale Daten', shape = rectangle, fillcolor = '#92B4F4']
+  variable_integration [label = 'Einflussfaktoren\\nDemokratie & Forschungsfreiheit', shape = oval, fillcolor = '#92B4F4']
+  regressions [label = 'Regressionsanalyse', shape = oval, fillcolor = '#E9967A']
+  
+  theory_validation [label = 'Theorienvergleich & Robustheitsprüfung', shape = rectangle, fillcolor = '#CD5C5C']
+
+  # Kreise für bestimmte Knoten
+  theorien [label = 'Migrationstheorien\\nBrain Circulation, Push-Pull, Gravitation', shape = rectangle, fillcolor = '#A8D5BA']
+  Researcher_quantil [label = 'Einteilung in Forschergruppen', shape = rectangle, fillcolor = '#A8D5BA']
+
+  # Verbindungen zwischen den Schritten
+  data_preparation -> data_combination
+  data_validation -> data_combination
+  data_combination -> data_visualization
+  data_visualization -> income_comparison
+  data_visualization -> variable_integration
+  theorien -> variable_integration
+  variable_integration -> regressions
+  Researcher_quantil -> regressions
+  regressions -> theory_validation
+}
+") %>% export_svg()  # SVG-Code generieren
+
+# SVG als Datei speichern
+writeLines(svg_code, "workflow_diagram.svg")
+
+# SVG in PNG umwandeln
+rsvg_png("workflow_diagram.svg", "workflow_diagram.png")
+
+# Meldung ausgeben
+cat("✅ Diagramm erfolgreich gespeichert als: workflow_diagram.png\n")
+
+
+```
+
+##Datensatz reinigen
+
+Der Datensatz `dfmerged_openalex_scopus_country` wird mit Demokratieindikatoren aus `filtered_V_dem` anhand von `countrycode` und `year` verknüpft und auf die Jahre 1998–2018 gefiltert. Zusätzlich wird der Mittelwert der Netto-Migrationsraten aus Scopus und OpenAlex (`netmigrate_mean`) berechnet.
+
+```{r}
+#| echo: true
+#| include: false
+#| eval: true
+#| label: dfmerged Selektion
+
+require(mgcv)
+require(parallel)
+require(data.table)
+
+dfmerged_openalex_scopus_country <- dfmerged_openalex_scopus_country %>%
+  filter(!is.na(countrycode), !is.na(year))
+
+
+# Zusammenführen der Datensätze und Berechnung der neuen Variablen
+df1 <- dfmerged_openalex_scopus_country %>% 
+  left_join(filtered_V_dem %>% select(countrycode, year, v2x_libdem, v2cafres), 
+            by = c("countrycode", "year")) %>%
+  mutate(
+    netmig_mean = rowMeans(select(., netmig_openalex, netmig_scopus), na.rm = TRUE),
+    paddedpop_mean = rowMeans(select(., paddedpop_scopus, paddedpop_openalex), na.rm = TRUE),
+    paddedpop_relative = paddedpop_mean / population * 100000,  # Forscheranteil an der Bevölkerung
+    netmigrate_mean = rowMeans(select(., netmigrate_scopus, netmigrate_openalex), na.rm = TRUE)
+  ) %>%
+  filter(!is.na(countrycode), !is.na(year)) %>%
+  filter(year >= 1998 & year <= 2018) %>%
+  filter(!(countrycode == "TWN" & is.na(countryname))) %>%
+  drop_na(v2x_libdem, v2cafres)  # 36 Länder werden in DF1 nicht miteinbezogen
+
+
+df1 <- df1 %>%
+  mutate(
+    democracy_category = ntile(v2x_libdem, 3),  # Einteilung in 3 gleich große Gruppen
+    Forschungsfreiheit_category = ntile(v2cafres, 3)
+  ) %>%
+  mutate(
+    democracy_category = case_when(
+      democracy_category == 1 ~ "Low",
+      democracy_category == 2 ~ "Medium",
+      democracy_category == 3 ~ "High"
+    ),
+    Forschungsfreiheit_category = case_when(
+      Forschungsfreiheit_category == 1 ~ "Low",
+      Forschungsfreiheit_category == 2 ~ "Medium",
+      Forschungsfreiheit_category == 3 ~ "High"
+    )
+  )
+
+
+# Länder ohne einen einzigen Match in V-Dem herausfinden (ohne NA)
+unmatched_countries <- dfmerged_openalex_scopus_country %>%
+  filter(!is.na(countrycode), !is.na(countryname)) %>%  # NA-Werte entfernen
+  distinct(countrycode, countryname) %>%  # Sicherstellen, dass jedes Land nur einmal auftaucht
+  anti_join(filtered_V_dem %>% filter(!is.na(countrycode)) %>% distinct(countrycode), by = "countrycode") 
+
+# Anzahl der nicht verbundenen Länder (ohne NA)
+num_unmatched_countries <- nrow(unmatched_countries)
+cat("Anzahl der Länder, die in keinem Jahr in V-Dem vorhanden sind:", num_unmatched_countries, "\n")
+
+# Liste der Ländernamen ausgeben (ohne NA)
+cat("Länder, die nie in V-Dem gematcht wurden:\n")
+print(unmatched_countries$countryname)
+
+
+```
+
+## Regressionstabelle
+
+```{r}
+#| label: Regressionstabelle 
+library(dplyr)
+library(ggplot2)
+
+dfselected <- df1 %>%
+  mutate(
+    outmigrate_mean = rowMeans(select(., outmigrate_openalex, outmigrate_scopus), na.rm = TRUE),
+    inmigrate_mean = rowMeans(select(., inmigrate_openalex, inmigrate_scopus), na.rm = TRUE),
+    outmig_mean = rowMeans(select(., outmig_openalex, outmig_scopus), na.rm = TRUE),
+    inmig_mean = rowMeans(select(., inmig_openalex, inmig_scopus), na.rm = TRUE)
+  )%>%
+  select(countrycode, year, countryname, gdp_per_capita, population, netmig_mean, paddedpop_mean, netmigrate_mean, outmigrate_mean, inmigrate_mean, outmig_mean, inmig_mean)
+
+# Falls die Spaltennamen im Datensatz leicht abweichen, benenne sie um:
+dfselected <- dfselected %>%
+  rename(
+    Wissenschaftleranzahl = paddedpop_mean,
+    Einwanderungen = inmig_mean,
+    Auswanderungen = outmig_mean,
+    Nettomigration = netmig_mean,
+    Auswanderungsrate = outmigrate_mean,
+    Einwanderungsrate = inmigrate_mean,
+    Nettomigrationsrate = netmigrate_mean,
+    Bevölkerung = population,
+    BIP = gdp_per_capita
+    
+  ) %>%
+  select(
+    Wissenschaftleranzahl,
+    Einwanderungen,
+    Auswanderungen,
+    Nettomigration,
+    Auswanderungsrate,
+    Einwanderungsrate,
+    Nettomigrationsrate,
+    BIP,
+    Bevölkerung
+  )
+
+
+# Nur numerische Variablen extrahieren
+df_numeric <- dfselected %>%
+  select(where(is.numeric))
+# Korrelationsmatrix berechnen
+
+# Korrelation berechnen
+cor_matrix <- cor(dfselected, use = "pairwise.complete.obs")
+
+
+
+library(corrplot)
+
+# Farben definieren: Blau für positive Korrelationen, Rot für negative
+col_palette <- colorRampPalette(c("#B2182B", "white", "#2166AC"))(200)
+
+# Professionelles Design für die Korrelationsmatrix
+corrplot(cor_matrix, 
+         method = "color",       # Farbige Kacheln statt Kreise
+         col = col_palette,      # Farbschema für bessere Lesbarkeit
+         type = "upper",     # Schriftgröße der Zahlen anpassen
+         tl.col = "black",       # Achsenbeschriftungen in Schwarz
+         tl.srt = 45,            # Achsenbeschriftungen schräg setzen
+         tl.cex = 0.9,           # Achsenbeschriftungen größer machen
+         cl.cex = 0.8,             # Schriftgröße der Farbskala anpassen
+         diag = FALSE)           # Keine Diagonale anzeigen
+
+
+
+
+
+ggplot(df1, aes(x = netmigrate_mean)) +
+  geom_histogram(binwidth = 0.01, fill = "#2C7BB6", color = "white", boundary = 0) +
+  geom_vline(xintercept = -0.125, linetype = "dashed", color = "red", size = 0.8) +
+  geom_vline(xintercept =  0.125, linetype = "dashed", color = "red", size = 0.8) +
+  labs(
+    x = "Nettomigrationsrate (normiert)", 
+    y = "Anzahl der Länderjahre"
+  ) +
+  coord_cartesian(xlim = c(-0.25, 0.25)) +  # 👈 zeige gesamte Verteilung von -1 bis 1
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    axis.title = element_text(face = "bold")
+  )
+
+
+
+```
+
+```{r}
+
+#| label:  Kombinierte Wetlkarte von Wissenschaftlern mit dfmerged 
+
+# Bibliotheken laden
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(scales)
+
+# **1. Daten vorbereiten: Kombinierter Datensatz**
+combined_data <- dfmerged_openalex_scopus_country
+
+# Wissenschaftleranzahl pro Land (1998–2020)
+world_data <- combined_data %>%
+  filter(year >= 1998 & year <= 2020) %>%
+  group_by(countrycode) %>%
+  summarise(mean_scholars = mean((paddedpop_openalex + paddedpop_scopus) / 2, na.rm = TRUE)) %>%
+  filter(!is.na(mean_scholars) & mean_scholars > 0)
+
+# Wissenschaftler pro 100.000 Einwohner
+combined_scholars_filtered <- combined_data %>%
+  filter(year >= 1998 & year <= 2020) %>%
+  group_by(countrycode) %>%
+  summarise(
+    mean_scholars = mean((paddedpop_openalex + paddedpop_scopus) / 2, na.rm = TRUE),
+    mean_population = mean(population, na.rm = TRUE)
+  ) %>%
+  mutate(scholars_per_100k = (mean_scholars / mean_population) * 100000) %>%
+  filter(!is.na(scholars_per_100k) & scholars_per_100k > 0)
+
+# **2. Weltkarte laden und Daten verbinden**
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Für Wissenschaftler pro Land
+world_combined <- world %>%
+  left_join(world_data, by = c("iso_a3_eh" = "countrycode")) %>%
+  filter(name != "Antarctica")
+
+# Für Wissenschaftler pro 100.000 Einwohner
+world_per_100k_combined <- world %>%
+  left_join(combined_scholars_filtered, by = c("iso_a3_eh" = "countrycode")) %>%
+  filter(name != "Antarctica")
+
+# **3. Visualisierungen**
+# Wissenschaftler pro Land
+p1 <- ggplot(data = world_combined) +
+  geom_sf(aes(fill = mean_scholars), color = NA) +
+  scale_fill_gradientn(
+    colours = c("lightgrey", "lightblue", "lightgreen", "green", "orange", "coral", "red"),
+    values = scales::rescale(c(0, 50000, 75000, 100000, 200000, 500000, 1200000)),
+    name = "Wissenschaftler",
+    breaks = seq(100000, 1200000, by = 200000),
+    labels = paste0(seq(100, 1200, by = 200), "k"),
+    limits = c(0, 1200000)
+  ) +
+  theme_minimal() +
+  labs(
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")
+
+# Wissenschaftler pro 100.000 Einwohner
+p2 <- ggplot(data = world_per_100k_combined) +
+  geom_sf(aes(fill = scholars_per_100k), color = NA) +
+  scale_fill_gradientn(
+    colours = c("lightgrey", "lightblue", "lightgreen", "green", "orange", "coral", "red"),
+    values = scales::rescale(c(0, 10, 50, 100, 200, 500, 1000)),
+    name = "Wissenschaftler",
+    breaks = seq(100, 1000, by = 200),
+    labels = paste0(seq(100, 1000, by = 200)),
+    limits = c(0, 1000)
+  ) +
+  theme_minimal() +
+  labs(
+    fill = "Wissenschaftler"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")
+
+# **4. Karten anzeigen**
+print(p1)
+print(p2)
+
+
+```
+
+## PCA
+
+```{r}
+#| label: PCA 
+# 📚 Bibliotheken laden
+library(tidyverse)
+library(factoextra)
+library(stargazer)
+
+# 🔹 1. Durchschnittswerte berechnen
+df1 <- df1 %>%
+  mutate(
+    inmig_mean = rowMeans(select(., inmig_openalex, inmig_scopus), na.rm = TRUE),
+    outmig_mean = rowMeans(select(., outmig_openalex, outmig_scopus), na.rm = TRUE)
+  )
+
+# 🔹 2. PCA-Variablen auswählen & standardisieren
+pca_vars <- df1 %>%
+  select(gdp_per_capita, population,
+         paddedpop_mean, inmig_mean, outmig_mean,
+         netmig_mean, netmigrate_mean) %>%
+  drop_na()
+
+pca_scaled <- scale(pca_vars)
+
+# 🔹 3. Spaltennamen auf Deutsch
+colnames(pca_scaled) <- c(
+  "BIP pro Kopf", "Bevölkerung", "Wissenschaftler",
+  "Einwanderung", "Auswanderung", "Nettomigration", "Nettomigrationsrate"
+)
+
+# 🔹 4. Hauptkomponentenanalyse (PCA)
+pca_result <- prcomp(pca_scaled, center = TRUE, scale. = TRUE)
+
+# 🧭 PCA-Eigenschaften holen für Prozentbeschriftung
+eig_vals <- get_eigenvalue(pca_result)
+pc1_label <- paste0("PC1 (", round(eig_vals$variance.percent[1], 1), "%)")
+pc2_label <- paste0("PC2 (", round(eig_vals$variance.percent[2], 1), "%)")
+
+# 📊 Angepasste PCA-Visualisierung
+fviz_pca_var(pca_result,
+             col.var = "contrib",     
+             repel = TRUE,           
+             labelsize = 5,          
+             arrowsize = 1.2) +
+  scale_color_gradientn(colors = c("#4575b4", "#ffffbf"), 
+                        name = "Beitrag (%)",
+                        limits = c(0, max(get_pca_var(pca_result)$contrib))) +
+  labs(x = pc1_label, y = pc2_label, title = NULL) +  # ⬅️ Kein Titel, Prozent auf Achsen
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_blank(),  # zur Sicherheit
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    legend.position = "right",
+    panel.grid = element_blank()
+  )
+df_pca_cluster <- as.data.frame(pca_result$x[, 1:2])
+df_pca_cluster$cluster <- kmeans(df_pca_cluster, centers = 4)$cluster
+
+ggplot(df_pca_cluster, aes(x = PC1, y = PC2, color = factor(cluster))) +
+  geom_point(size = 2) +
+  labs(x = pc1_label, y = pc2_label, color = "Cluster") +
+  theme_minimal()
+
+
+
+
+# 🔹 6. PCA-Komponenten in Datensatz integrieren
+df1_pca <- df1 %>%
+  drop_na(gdp_per_capita, population,
+          paddedpop_mean, inmig_mean, outmig_mean,
+          netmig_mean, netmigrate_mean) %>%
+  bind_cols(as.data.frame(pca_result$x[, 1:3]))
+
+# 🔹 7. Gruppierung nach Demokratie- & Forschungsniveau
+df1_pca <- df1_pca %>%
+  mutate(
+    democracy_group = ntile(v2x_libdem, 3),
+    freedom_group = ntile(v2cafres, 3)
+  ) %>%
+  mutate(
+    democracy_group = factor(democracy_group, levels = 1:3, labels = c("Low", "Medium", "High")),
+    freedom_group = factor(freedom_group, levels = 1:3, labels = c("Low", "Medium", "High"))
+  )
+
+# 🔹 8. PCA-Raum nach Demokratielevel
+ggplot(df1_pca, aes(x = PC1, y = PC2, color = democracy_group)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  theme_minimal() +
+  labs(title = "Länder im PCA-Raum nach Demokratie-Level", color = "Demokratie-Level")
+
+# 🔹 9. PCA-Raum nach Forschungsfreiheit
+ggplot(df1_pca, aes(x = PC1, y = PC2, color = freedom_group)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  theme_minimal() +
+  labs(title = "PCA-Raum nach Forschungsfreiheit", color = "Forschungsfreiheit")
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+
+library(stargazer)
+
+model_all <- lm(v2x_libdem ~ PC1 + PC2, data = df1_pca)
+
+df1_pca_filtered <- df1_pca %>%
+  filter(!countryname %in% c("China", "United States"))
+
+model_filtered <- lm(v2x_libdem ~ PC1 + PC2, data = df1_pca_filtered)
+
+
+stargazer(model_all, model_filtered,
+          type = "latex",
+          title = "Regressionsergebnisse: Migrationskomponenten auf Demokratie",
+          column.labels = c("Alle Länder", "Ohne China/USA"),
+          dep.var.labels = "Demokratieindex",
+          covariate.labels = c("Migrationsintensität / Systemgröße", 
+                               "Nettomigration"),
+          digits = 2,
+          omit.stat = c("f", "ser"),
+          out = "pca_regression_libdem.tex",
+          font.size = "scriptsize",
+          column.sep.width = "2pt", 
+          align = TRUE,
+          style = "default")
+
+
+library(dplyr)
+library(stargazer)
+
+# ➤ Neue PCA-Variablen nur mit OpenAlex
+df_openalex <- df1 %>%
+  mutate(
+    inmig = inmig_openalex,
+    outmig = outmig_openalex,
+    netmig = netmig_openalex,
+    netmigrate = netmigrate_openalex,
+    paddedpop = paddedpop_openalex
+  ) %>%
+  select(countryname, v2x_libdem, gdp_per_capita, population, paddedpop,
+         inmig, outmig, netmig, netmigrate) %>%
+  drop_na()
+
+# ➤ PCA
+pca_vars_openalex <- df_openalex %>%
+  select(gdp_per_capita, population, paddedpop, inmig, outmig, netmig, netmigrate)
+
+pca_result_openalex <- prcomp(scale(pca_vars_openalex), center = TRUE, scale. = TRUE)
+
+df_openalex_pca <- df_openalex %>%
+  bind_cols(as.data.frame(pca_result_openalex$x[, 1:2]))
+
+# ➤ Regression: alle Länder
+model_openalex_all <- lm(v2x_libdem ~ PC1 + PC2, data = df_openalex_pca)
+
+# ➤ Regression: ohne China & USA
+model_openalex_filtered <- df_openalex_pca %>%
+  filter(!countryname %in% c("China", "United States"))
+model_openalex_filtered <- lm(v2x_libdem ~ PC1 + PC2, data = model_openalex_filtered)
+
+# ➤ Export als LaTeX
+stargazer(model_openalex_all, model_openalex_filtered,
+          type = "text",
+          title = "Regression: Einfluss von OpenAlex-Migrationskomponenten auf Demokratieindex",
+          column.labels = c("Alle Länder", "Ohne China/USA"),
+          dep.var.labels = "Demokratieindex",
+          covariate.labels = c("Migrationsintensität / Systemgröße", 
+                               "Nettomigration"),
+          digits = 2,
+          omit.stat = c("f", "ser"),
+          font.size = "scriptsize",
+          column.sep.width = "2pt", 
+          align = TRUE,
+          style = "default")
+
+
+# ➤ Neue PCA-Variablen nur mit Scopus
+df_scopus <- df1 %>%
+  mutate(
+    inmig = inmig_scopus,
+    outmig = outmig_scopus,
+    netmig = netmig_scopus,
+    netmigrate = netmigrate_scopus,
+    paddedpop = paddedpop_scopus
+  ) %>%
+  select(countryname, v2x_libdem, gdp_per_capita, population, paddedpop,
+         inmig, outmig, netmig, netmigrate) %>%
+  drop_na()
+
+# ➤ PCA
+pca_vars_scopus <- df_scopus %>%
+  select(gdp_per_capita, population, paddedpop, inmig, outmig, netmig, netmigrate)
+
+pca_result_scopus <- prcomp(scale(pca_vars_scopus), center = TRUE, scale. = TRUE)
+
+df_scopus_pca <- df_scopus %>%
+  bind_cols(as.data.frame(pca_result_scopus$x[, 1:2]))
+
+# ➤ Regression: alle Länder
+model_scopus_all <- lm(v2x_libdem ~ PC1 + PC2, data = df_scopus_pca)
+
+# ➤ Regression: ohne China & USA
+model_scopus_filtered <- df_scopus_pca %>%
+  filter(!countryname %in% c("China", "United States")) 
+
+ model_scopus_filtered <- lm(v2x_libdem ~ PC1 + PC2, data = model_scopus_filtered)
+
+# ➤ Export als LaTeX
+stargazer(model_scopus_all, model_scopus_filtered,
+          type = "text",
+          title = "Regression: Einfluss von Scopus-Migrationskomponenten auf Demokratieindex",
+          column.labels = c("Alle Länder", "Ohne China/USA"),
+          dep.var.labels = "Demokratieindex",
+          covariate.labels = c("Migrationsintensität / Systemgröße", 
+                               "Nettomigration"),
+          digits = 2,
+          omit.stat = c("f", "ser"),
+          font.size = "scriptsize",
+          column.sep.width = "2pt", 
+          align = TRUE,
+          style = "default")
+
+
+model_all <- lm(v2cafres ~ PC1 + PC2, data = df1_pca)
+
+df1_pca_filtered <- df1_pca %>%
+  filter(!countryname %in% c("China", "United States"))
+
+model_filtered <- lm(v2cafres ~ PC1 + PC2, data = df1_pca_filtered)
+
+
+
+stargazer(model_all, model_filtered,
+          type = "text",
+          title = "Regressionsergebnisse: Migrationskomponenten auf Forschungsfreiheit",
+          column.labels = c("Alle Länder", "Ohne China/USA"),
+          dep.var.labels = "Forschungsfreiheit",
+          covariate.labels = c("Migrationsintensität / Systemgröße", 
+                               "Nettomigration"),
+          digits = 2,
+          omit.stat = c("f", "ser"),
+          font.size = "scriptsize",
+          column.sep.width = "2pt", 
+          align = TRUE,
+          style = "default")
+
+
+```
+
+## Nettomigrationsrate Vergleich
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+#| label: fig-netmigration-compare
+#| fig-cap: "Vergleich der standardisierten Nettomigration (links) und Nettomigrationsrate (rechts) in OpenAlex und Scopus"
+#| fig-subcap: ["Nettomigration", "Nettomigrationsrate"]
+#| layout-ncol: 2
+#| fig-width: 10
+#| fig-height: 5
+
+# Notwendige Bibliotheken laden
+library(dplyr)
+library(ggplot2)
+
+# Entferne alle NA-Werte und behalte nur die relevanten Variablen
+df1_filtered <- df1 %>%
+  filter(!is.na(netmig_openalex) & !is.na(netmig_scopus)) %>%
+  filter(!is.na(netmigrate_openalex) & !is.na(netmigrate_scopus)) %>%
+  select(netmig_openalex, netmig_scopus, netmigrate_openalex, netmigrate_scopus, year, countrycode)
+
+# Berechnung der Pearson-Korrelation
+cor_netmig <- cor(df1_filtered$netmig_openalex, df1_filtered$netmig_scopus, method = "pearson")
+cor_netmigrate <- cor(df1_filtered$netmigrate_openalex, df1_filtered$netmigrate_scopus, method = "pearson")
+
+library(ggplot2)
+library(patchwork)
+
+# Plot 1: Nettomigration
+plot_netmig <- ggplot(df1_filtered, aes(x = netmig_openalex, y = netmig_scopus, color = year)) +
+  geom_point(aes(shape = ifelse(countrycode == "USA", "USA", 
+                         ifelse(countrycode == "CHN", "China", "Other"))), 
+             alpha = 0.8, size = 2) + 
+  geom_hline(yintercept = 0, color = "darkgrey", size = 0.1) +  
+  geom_vline(xintercept = 0, color = "darkgrey", size = 0.1) +  
+  geom_smooth(method = "lm", se = FALSE, color = "grey", alpha = 0.2) +  
+  scale_color_gradient(low = "blue", high = "green") +  
+  scale_shape_manual(values = c("USA" = 15, "China" = 17, "Other" = 16), drop = TRUE) +  
+  labs(
+    title = "Nettomigration",
+    x = "OpenAlex",
+    y = "Scopus",
+    shape = "Länder",  
+    color = "Jahr"
+  ) +
+  annotate("text", x = min(df1_filtered$netmig_openalex, na.rm = TRUE), 
+           y = max(df1_filtered$netmig_scopus, na.rm = TRUE), 
+           label = paste0("r = ", round(cor_netmig, 3)), 
+           hjust = 0, vjust = 1, size = 3, color = "black", fontface = "bold") +  
+  theme_minimal() +  
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),  
+        legend.position = "right")
+
+# Plot 2: Nettomigrationsrate
+plot_netmigrate <- ggplot(df1_filtered, aes(x = netmigrate_openalex, y = netmigrate_scopus, color = year)) +
+  geom_point(aes(shape = ifelse(countrycode == "USA", "USA", 
+                         ifelse(countrycode == "CHN", "China", "Other"))), 
+             alpha = 0.8, size = 2) + 
+  geom_hline(yintercept = 0, color = "darkgrey", size = 0.1) +  
+  geom_vline(xintercept = 0, color = "darkgrey", size = 0.1) +  
+  geom_smooth(method = "lm", se = FALSE, color = "grey", alpha = 0.2) +  
+  scale_color_gradient(low = "blue", high = "green") +  
+  scale_shape_manual(values = c("USA" = 15, "China" = 17, "Other" = 16), drop = TRUE) +  
+  labs(
+    title = "Nettomigrationsrate",
+    x = "OpenAlex",
+    y = "Scopus",
+    shape = "Länder",  
+    color = "Jahr"
+  ) +
+  coord_cartesian(xlim = c(-0.5, 0.5), ylim = c(-0.3, 0.4)) +  
+  annotate("text", x = min(df1_filtered$netmigrate_openalex, na.rm = TRUE), 
+           y = max(df1_filtered$netmigrate_scopus, na.rm = TRUE), 
+           label = paste0("r = ", round(cor_netmigrate, 3)), 
+           hjust = 0, vjust = 1, size = 3, color = "black", fontface = "bold") +  
+  theme_minimal() +  
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),  
+        legend.position = "right")
+
+combined_plot <- plot_netmig + plot_netmigrate + 
+  plot_annotation(
+    title = "Vergleich von OpenAlex- und Scopus-Daten",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+
+library(patchwork)
+
+# 👇 Kombinieren der beiden Plots mit gemeinsamer Legende
+combined_plot <- plot_netmig + plot_netmigrate +
+  plot_layout(guides = "collect") +  # 💡 Gemeinsame Legende!
+  plot_annotation(
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  ) & 
+  theme(legend.position = "bottom")  # Optional: Legend unter den Plots platzieren
+```
+
+```{r}
+#| echo: false
+#| include: true
+#| eval: true
+# ⬇️ Anzeigen
+combined_plot
+
+
+```
+
+```{r}
+#| label: Rückkehrmuster Vergleich
+#| warning: false
+#| message: false
+
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+merged_scopus <- scopus_data %>% 
+  left_join(filtered_V_dem %>% select(countrycode, year, v2x_libdem, v2x_polyarchy, v2x_corr, v2x_rule, v2x_freexp_altinf, v2x_civlib, v2cafres, v2cafexch, v2cainsaut, v2xca_academ), 
+            by = c("countrycode", "year")) %>%
+  filter(!is.na(countrycode), !is.na(year))
+
+#colSums(is.na(merged_scopus))
+
+# Zusammenführen der beiden Datensätze: openalex_2024_V1_scholarlymigration_country_enriched und Vdem
+merged_openalex <- openalex_data %>%
+  left_join(filtered_V_dem %>% select(countrycode, year, v2x_libdem, v2x_polyarchy, v2x_corr, v2x_rule, v2x_freexp_altinf, v2x_civlib, v2cafres, v2cafexch, v2cainsaut, v2xca_academ), 
+            by = c("countrycode", "year")) %>%
+  filter(!is.na(countrycode), !is.na(year))
+
+rename_regions <- function(df) {
+  df %>%
+    mutate(region = as.character(region)) %>%
+    mutate(region = dplyr::recode(region,
+      "Latin America & Caribbean" = "Lateinamerika & Karibik",
+      "South Asia" = "Südasien",
+      "Sub-Saharan Africa" = "Subsahara-Afrika",
+      "Europe & Central Asia" = "Europa & Zentralasien",
+      "Middle East & North Africa" = "Naher Osten & Nordafrika",
+      "East Asia & Pacific" = "Ostasien & Pazifik",
+      "North America" = "Nordamerika"
+    ))
+}
+
+merged_scopus <- rename_regions(merged_scopus)
+merged_openalex <- rename_regions(merged_openalex)
+
+region_colors <- c(
+  "Lateinamerika & Karibik"       = "#87CEEB",
+  "Südasien"                      = "#FFA500",
+  "Subsahara-Afrika"             = "#9370DB",
+  "Europa & Zentralasien"        = "#32CD32",
+  "Naher Osten & Nordafrika"     = "#FFD700",
+  "Ostasien & Pazifik"           = "#00CED1",
+  "Nordamerika"                  = "#FF6347"
+)
+
+
+
+# --- Scopus Plot ---
+plot_scopus <- merged_scopus %>%
+  group_by(region, year) %>%
+  summarize(netmigration = sum(netmigration, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(x = year, y = netmigration, color = region)) +
+  geom_line(linewidth = 1.2) +
+  scale_color_manual(values = region_colors) +
+  labs(title = "Scopus", x = NULL, y = "Netto-Migration") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# --- OpenAlex Plot (ohne Y-Achse) ---
+plot_openalex <- merged_openalex %>%
+  group_by(region, year) %>%
+  summarize(netmigration = sum(netmigration, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(x = year, y = netmigration, color = region)) +
+  geom_line(linewidth = 1.2) +
+  scale_color_manual(values = region_colors) +
+  labs(title = "OpenAlex", x = NULL, y = NULL) +  # y = NULL entfernt Label
+  theme_minimal() +
+  theme(
+    axis.title.y = element_blank(), 
+    axis.text.y = element_text(),   # Keine Y-Achsenticks
+    axis.ticks.y = element_blank(),  # Keine Y-Achsenticks
+    legend.position = "none"
+  )
+
+# --- Combine plots with patchwork ---
+combined_plot <- (plot_scopus | plot_openalex) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom",
+        legend.title = element_blank()  # <- Titel der Legende ausblenden
+)
+
+
+
+# --- Ausgabe ---
+print(combined_plot)
+
+
+```
+
+```{r}
+#| label: "net migration from 1998 to 2020 for regions"
+#| figure: "scopus blau und openalex rot"
+# Notwendige Pakete laden
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+
+# Temporäre Umgebung für Variablen
+temp_env <- new.env()
+
+# Aggregation der Netto-Migration für Scopus und OpenAlex pro Region und Jahr mit df1
+df1_aggregated <- df1 %>%
+  group_by(region, year) %>%
+  summarise(
+    netmigrate_scopus = sum(netmigrate_scopus, na.rm = TRUE),
+    netmigrate_openalex = sum(netmigrate_openalex, na.rm = TRUE)
+  )
+
+
+# Liste der zu plottenden Regionen
+temp_env$regions <- c("Latin America & Caribbean", "South Asia", "Sub-Saharan Africa", 
+                      "Europe & Central Asia", "Middle East & North Africa", 
+                      "East Asia & Pacific", "North America")
+
+# Leere Liste initialisieren, um die Plots zu speichern
+temp_env$plots <- list()
+
+# Deutsche Namen für die Regionen
+region_translation <- c(
+  "Latin America & Caribbean" = "Lateinamerika & Karibik",
+  "South Asia" = "Südasien",
+  "Sub-Saharan Africa" = "Subsahara-Afrika",
+  "Europe & Central Asia" = "Europa & Zentralasien",
+  "Middle East & North Africa" = "Naher Osten & Nordafrika",
+  "East Asia & Pacific" = "Ostasien & Pazifik",
+  "North America" = "Nordamerika"
+)
+
+
+# Schleife durch jede Region und erstelle einen kombinierten Plot
+for (region in temp_env$regions) {
+  region_data <- df1_aggregated %>%
+    filter(region == !!region)
+  
+  start_year <- min(region_data$year, na.rm = TRUE)
+  end_year <- max(region_data$year, na.rm = TRUE)
+  
+  temp_env$p <- ggplot() +
+    geom_smooth(data = region_data, aes(x = year, y = netmigrate_scopus), 
+                method = "loess", se = FALSE, color = "blue", size = 1) +  
+    geom_smooth(data = region_data, aes(x = year, y = netmigrate_openalex), 
+                method = "loess", se = FALSE, color = "red", size = 1) +  
+    labs(title = region_translation[[region]]) +  # Deutsche Namen nutzen
+    scale_x_continuous(breaks = seq(start_year, end_year, by = 10)) + 
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 10),  
+      axis.text.x = element_text(size = 8),  
+      axis.ticks.x = element_line(), 
+      axis.title.x = element_blank(),  
+      axis.title.y = element_blank(),  
+      legend.position = "none",        
+      panel.grid = element_blank(),    
+      plot.margin = margin(5, 5, 5, 5) 
+    )
+  
+  temp_env$plots[[region]] <- temp_env$p
+}
+
+
+# Anordnen aller Plots in einem Rasterlayout (2x4)
+grid.arrange(grobs = temp_env$plots, ncol = 2, nrow = 4)
+
+
+
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+#| label: First-Difference Modell
+library(stargazer)
+library(dplyr)
+library(ggplot2)
+library(plm)
+
+# Wählen der relevanten Variablen für die Regression
+df_delta <- df1 %>%
+  select(countrycode, year, netmigrate_mean, v2x_libdem, gdp_per_capita, v2cafres, population)
+
+#df_delta %>% filter(is.na(gdp_per_capita) | is.na(population)) %>% select(countrycode, year)
+
+df_delta <- df_delta %>%
+  group_by(countrycode) %>%
+  mutate(
+    gdp_per_capita = ifelse(is.na(gdp_per_capita), mean(gdp_per_capita, na.rm = TRUE), gdp_per_capita),
+    population = ifelse(is.na(population), mean(population, na.rm = TRUE), population)
+  ) %>%
+  ungroup()
+
+#df_delta %>% group_by(countrycode) %>% summarise(anzahl_jahre = n()) %>% arrange(anzahl_jahre)
+
+# Liste der Variablen, die mit ihrem Vorjahreswert ergänzt werden sollen
+vars_to_lag <- c("netmigrate_mean", "v2x_libdem", "gdp_per_capita")
+
+# Liste der Verzögerungen (t-1 bis t-4)
+lags <- c(1, 2, 5, 10)
+
+# Iteriere über jede Variable und jedes Lag
+for (var in vars_to_lag) {
+  for (lag in lags) {
+    # Kopie des Datensatzes für das entsprechende Lag
+    df_delta_previous <- df_delta %>%
+      select(countrycode, year, all_of(var)) %>%
+      mutate(year = year + lag)  # Jahr um X erhöhen, damit die Werte aus Jahr t-X mit Jahr t übereinstimmen
+    
+    # Mergen mit dem Originaldatensatz
+    df_delta <- df_delta %>%
+      left_join(df_delta_previous, by = c("countrycode", "year"), suffix = c("", paste0("_", var, "_lag", lag)))
+    
+    # Spalte umbenennen für Klarheit
+    new_col_name <- paste0(var, "_lag", lag)
+    df_delta <- df_delta %>%
+      rename(!!new_col_name := all_of(paste0(var, "_", var, "_lag", lag)))
+  }
+}
+
+df_delta <- df_delta %>%
+  mutate(
+    log_gdp_per_capita = log(gdp_per_capita + 1),  # Logarithmierung zum Ausgleich der Schieflage
+    democracy_cat = case_when(
+      v2x_libdem < 0.3 ~ "Low",
+      v2x_libdem >= 0.3 & v2x_libdem < 0.6 ~ "Medium",
+      v2x_libdem >= 0.6 ~ "High"
+    )
+  )
+
+df_delta <- df_delta %>%
+  mutate(netmigrate_mean = ifelse(netmigrate_mean < quantile(netmigrate_mean, 0.01, na.rm = TRUE), 
+                                  quantile(netmigrate_mean, 0.01, na.rm = TRUE), netmigrate_mean),
+         netmigrate_mean = ifelse(netmigrate_mean > quantile(netmigrate_mean, 0.91, na.rm = TRUE), 
+                                  quantile(netmigrate_mean, 0.91, na.rm = TRUE), netmigrate_mean))
+
+df_delta <- df_delta %>%
+  mutate(
+    delta_netmig_lag1 = netmigrate_mean - netmigrate_mean_lag1,
+    delta_netmig_lag2 = netmigrate_mean - netmigrate_mean_lag2,
+    delta_netmig_lag5 = netmigrate_mean - netmigrate_mean_lag5,
+    delta_netmig_lag10 = netmigrate_mean - netmigrate_mean_lag10,
+    
+    delta_v2x_libdem_lag1 = v2x_libdem - v2x_libdem_lag1,
+    delta_v2x_libdem_lag2 = v2x_libdem - v2x_libdem_lag2,
+    delta_v2x_libdem_lag5 = v2x_libdem - v2x_libdem_lag5,
+    delta_v2x_libdem_lag10 = v2x_libdem - v2x_libdem_lag10,
+
+    delta_gdp_per_capita_lag1 = gdp_per_capita - gdp_per_capita_lag1,
+    delta_gdp_per_capita_lag2 = gdp_per_capita - gdp_per_capita_lag2,
+    delta_gdp_per_capita_lag5 = gdp_per_capita - gdp_per_capita_lag5,
+    delta_gdp_per_capita_lag10 = gdp_per_capita - gdp_per_capita_lag10
+  )
+
+library(lmtest)
+library(sandwich)
+
+# First-Difference-Regression mit Kontrollvariablen (nicht sichtbar in stargazer)
+model_fd1 <- lm(delta_netmig_lag1 ~ delta_v2x_libdem_lag1 + log_gdp_per_capita + log(population), data = df_delta)
+model_fd2 <- lm(delta_netmig_lag2 ~ delta_v2x_libdem_lag2 + log_gdp_per_capita + log(population), data = df_delta)
+model_fd5 <- lm(delta_netmig_lag5 ~ delta_v2x_libdem_lag5 + log_gdp_per_capita + log(population), data = df_delta)
+model_fd10 <- lm(delta_netmig_lag10 ~ delta_v2x_libdem_lag10 + log_gdp_per_capita + log(population), data = df_delta)
+
+
+
+stargazer(model_fd1, model_fd2, model_fd5, model_fd10, 
+          type = "latex", 
+          title = "Regressionsergebnisse: Migration und Demokratie",
+          dep.var.labels.include = FALSE,
+          dep.var.caption = "Netto-Migrationsrate",
+          covariate.labels = c("Demokratie Index (LD1 Lag 1)", "LDI Lag 2", "LDI Lag 5", "LDI Lag 10"),  
+          column.labels = c("t-1", "t-2", "t-5", "t-10"),
+          omit = c("log_gdp_per_capita", "log\\(population\\)", "v2cafres", "factor\\(region\\)"),  # Kontrollvariablen nicht anzeigen
+          omit.stat = c("f", "ser"),
+          digits = 2,
+          column.sep.width = "2pt", 
+          font.size = "scriptsize",
+          out = "Regressionstabelle3.tex")
+
+
+
+# Robuste Standardfehler berechnen
+coeftest(model_fd1, vcov = vcovHC(model_fd1, type = "HC3"))
+coeftest(model_fd5, vcov = vcovHC(model_fd5, type = "HC3"))
+
+ggplot(df_delta, aes(x = delta_v2x_libdem_lag5, y = delta_netmig_lag5)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(title = "Zusammenhang zwischen Demokratieänderung und Migration (t-5)",
+       x = "Delta Demokratieindex (t-5)",
+       y = "Delta Nettomigration (t-5)") +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+# Notwendige Pakete laden
+library(ggplot2)
+library(ggpubr)  # Für stat_cor() zur Berechnung des Korrelationskoeffizienten
+
+# Scatterplot mit Regressionslinie und R-Koeffizient
+ggplot(df1, aes(x = gdp_per_capita, y = paddedpop_relative)) +
+  geom_point(alpha = 0.5, color = "blue") +  # Punkte mit Transparenz
+  geom_smooth(method = "lm", color = "red", se = TRUE) +  # Lineare Regression mit Konfidenzintervall
+  stat_cor(method = "pearson", label.x = min(df1$gdp_per_capita, na.rm = TRUE), 
+           label.y = max(df1$paddedpop_relative, na.rm = TRUE), size = 5) +  # R-Koeffizient berechnen
+  theme_minimal() +
+  labs(title = "Korrelation zwischen Bevölkerung und BIP pro Kopf",
+       x = "BIP pro Kopf",
+       y = "Relative Bevölkerung von Wissenschaftlern")
+
+
+```
+
+## Forschergruppen und Einkommensklassen
+
+```{r}
+#| label: Forschergruppen dominante Gruppen 
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+# Sicherstellen, dass die Variable numerisch ist
+df1$paddedpop_mean <- as.numeric(df1$paddedpop_mean)
+
+# Berechnung der Quantile und Erstellung der neuen Spalte 'Researchergroup' (6 Quantile)
+df1_groups <- df1 %>%
+  mutate(Researchergroup = cut(
+    paddedpop_mean,
+    breaks = quantile(paddedpop_mean, probs = seq(0, 1, by = 1/6), na.rm = TRUE),
+    include.lowest = TRUE,
+    labels = paste0("Q", 1:6)
+  ))
+
+# Berechnung der Intervalle der Wissenschaftlerpopulation pro Quantil
+quantile_intervals <- df1_groups %>%
+  group_by(Researchergroup) %>%
+  summarise(min_value = min(paddedpop_mean, na.rm = TRUE),
+            max_value = max(paddedpop_mean, na.rm = TRUE)) %>%
+  mutate(label = paste0(Researchergroup, " (", round(min_value, 0), " - ", round(max_value, 0), ")"))
+
+# Daten filtern und Extremwerte auf -0.125 bis 0.125 für alle Quantile begrenzen
+filtered_df1_groups <- df1_groups %>%
+  mutate(netmigrate_mean = ifelse(netmigrate_mean > 0.125, 0.125,
+                                  ifelse(netmigrate_mean < -0.125, -0.125, netmigrate_mean))) %>%
+  left_join(quantile_intervals, by = "Researchergroup")
+
+# Farbwerte für die Labels neu definieren (6 Blautöne)
+unique_labels <- unique(filtered_df1_groups$label)
+color_palette <- setNames(
+  c("#238b45", "#41ab5d", "#78c679", "#a6d96a", "#74add1", "#4575b4"), 
+  unique_labels
+)
+
+
+# Datenvorbereitung: Bestimme die häufigste Researchergroup pro Land
+combined_summary <- df1_groups %>%
+  group_by(countrycode) %>%
+  summarize(
+    Dominant_Researchergroup = names(which.max(table(Researchergroup)))
+  )
+
+# Weltkarte-Daten laden
+world_map <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Daten zusammenführen (Ländercodes angleichen)
+world_map <- world_map %>%
+  left_join(combined_summary, by = c("iso_a3_eh" = "countrycode")) %>%
+  filter(name != "Antarctica")
+
+# Farbpalette für die Researchergroups definieren (6 Quantile)
+color_palette1 <- c(
+  "Q1" = "#238b45", "Q2" = "#41ab5d", "Q3" = "#78c679", 
+  "Q4" = "#a6d96a", "Q5" = "#74add1", "Q6" = "#4575b4"
+)
+
+# Weltkarte erstellen
+ggplot(data = world_map) +
+  geom_sf(aes(fill = Dominant_Researchergroup), color = "white", size = 0.1) +
+  scale_fill_manual(
+    values = color_palette1,
+    name = "Forschergruppe",
+    na.value = "grey80"
+  ) +
+  labs(
+    title = "Weltkarte der dominanten Forschergruppe",
+    caption = "Datenquelle: Scopus und OpenAlex"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")  # Robinson-Projektion für eine bessere Weltkartenansicht
+
+```
+
+```{r}
+#| label: Durchschnittliche Nettomigrationsrate pro Forschergruppen
+# Boxplot mit angepasster Farbpalette
+ggplot(filtered_df1_groups, aes(x = Researchergroup, y = netmigrate_mean, fill = Researchergroup)) +
+  geom_boxplot(alpha = 0.8, color = "black") +  # Schwarze Umrandung für bessere Sichtbarkeit
+  scale_fill_manual(values = c(
+    "Q1" = "#238b45", "Q2" = "#41ab5d", "Q3" = "#78c679", 
+    "Q4" = "#a6d96a", "Q5" = "#74add1", "Q6" = "#4575b4"
+  )) + 
+  labs(
+    title = "Durchschnittliche Nettomigrationsrate pro Forschergruppe",
+    x = "Forschergruppe",
+    y = "Nettomigrationsrate",
+    caption = "Quelle: Scopus und OpenAlex"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",  # Legende ausblenden
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+```
+
+```{r}
+#| label: Verteilung der Einkommensgruppen in den Researchergroups
+library(dplyr)
+library(ggplot2)
+
+# Daten filtern: nur Werte zwischen -0.25 und 0.25 & ohne "INX"
+filtered_data <- df1_groups %>%
+  filter(netmigrate_mean >= -0.25, netmigrate_mean <= 0.25, incomelevel != "INX")
+
+# Einkommensgruppen in der gewünschten Reihenfolge festlegen
+filtered_data$incomelevel <- factor(filtered_data$incomelevel, levels = c("HIC", "UMC", "LMC", "LIC"))
+
+# Berechnung der Verteilung der Einkommensgruppen in den Researchergroups
+proportion_data <- filtered_data %>%
+  group_by(Researchergroup, incomelevel) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(Researchergroup) %>%
+  mutate(total_count = sum(count),
+         proportion = count / total_count)
+
+# Balkendiagramm: Verteilung der Einkommensgruppen in den Researchergroups
+ggplot(proportion_data, aes(x = Researchergroup, y = proportion, fill = incomelevel)) +
+  geom_bar(stat = "identity", position = "stack", color = "black") +
+  scale_fill_brewer(palette = "Set2") +  # Farben für Einkommensgruppen
+  labs(
+    title = "Verteilung der Einkommensgruppen in den Researchergroups",
+    x = "Researchergroup",
+    y = "Proportion",
+    fill = "Einkommensgruppe",
+    caption = "Quelle: Scopus und OpenAlex"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
+  )
+
+```
+
+```{r}
+#| label: Gewichtete Nettomigrationsrate nach Wissenschaftler-Quantilen neu 
+library(dplyr)
+library(ggplot2)
+
+# Daten filtern: nur Werte zwischen -0.25 und 0.25 & ohne "INX"
+filtered_data <- df1_groups %>%
+  filter(netmigrate_mean >= -0.25, netmigrate_mean <= 0.25, incomelevel != "INX")
+
+# Einkommensgruppen in der gewünschten Reihenfolge festlegen
+filtered_data$incomelevel <- factor(filtered_data$incomelevel, levels = c("HIC", "UMC", "LMC", "LIC"))
+
+# Aggregation: Mittelwert der Netto-Migrationsrate pro Quantil & Einkommensgruppe
+aggregated_data <- filtered_data %>%
+  group_by(Researchergroup, incomelevel) %>%
+  summarise(avg_netmigrationrate = mean(netmigrate_mean, na.rm = TRUE), .groups = "drop")
+
+# Berechnung der Verteilung der Einkommensgruppen in den Researchergroups
+proportion_data <- filtered_data %>%
+  group_by(Researchergroup, incomelevel) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(Researchergroup) %>%
+  mutate(total_count = sum(count),
+         proportion = count / total_count)
+
+# Verknüpfung der Proportionen mit den Aggregierten Daten
+mean_data <- aggregated_data %>%
+  left_join(proportion_data, by = c("Researchergroup", "incomelevel")) %>%
+  mutate(weighted_mean_rate = avg_netmigrationrate * proportion* 1000)
+
+
+
+# Balkendiagramm erstellen
+ggplot(mean_data, aes(x = Researchergroup, y = weighted_mean_rate, fill = incomelevel)) +
+  geom_bar(stat = "identity", position = position_dodge(), color = "black", width = 0.8) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    x = "Quantile von Wissenschaftlern",
+    y = "Nettomigrationsrate",
+    fill = "Einkommensniveau",
+    caption = "Quelle: Scopus und OpenAlex"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+
+```
+
+```{r}
+#| label: Migrationsströme zwischen Einkommensklassen 
+library(ggplot2)
+library(tidyr)
+library(ggalluvial)
+
+# **1. Kombination und Durchschnittsbildung von Scopus und OpenAlex**
+# Berechnung der Durchschnittswerte zwischen Scopus und OpenAlex
+combined_flows <- bind_rows(
+  openalex_flows %>% mutate(source = "OpenAlex"),
+  scopus_flows %>% mutate(source = "Scopus")
+) %>%
+  group_by(countrynamefrom, countrynameto, incomelevelfrom, incomelevelto, regionfrom, regionto) %>%
+  summarise(
+    n_migrations = mean(n_migrations, na.rm = TRUE),  # Durchschnitt der Migrationen
+    gdp_per_capitafrom = mean(gdp_per_capitafrom, na.rm = TRUE),  # Durchschnittliches GDP
+    gdp_per_capitato = mean(gdp_per_capitato, na.rm = TRUE),      # GDP des Ziel-Landes
+    .groups = "drop"
+  )
+
+# Einkommensgruppen in der gewünschten Reihenfolge festlegen
+combined_flows$incomelevelfrom <- factor(combined_flows$incomelevelfrom, levels = c("HIC", "UMC", "LMC", "LIC"))
+combined_flows$incomelevelto <- factor(combined_flows$incomelevelto, levels = c("HIC", "UMC", "LMC", "LIC"))
+combined_flows <- combined_flows |> drop_na(incomelevelfrom, incomelevelto)  # Entfernt nur Zeilen mit kritischen NA-Werten
+
+
+# Erstellen des Sankey-Diagramms mit optimierten Farben und verbesserter Darstellung
+ggplot(combined_flows, aes(axis1 = incomelevelfrom, axis2 = incomelevelto, y = n_migrations)) +
+  geom_flow(aes(fill = incomelevelfrom), stat = "alluvium", curve_type = "sigmoid", lwd = 1) +  # Einheitliche Linien
+  geom_stratum(fill = "white", color = "black", size = 0.5) +  # Klare Trennung der Einkommensgruppen
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 4, color = "black") +  # Lesbare Labels
+  scale_fill_brewer(palette = "Dark2") +  # Farbpalette angepasst
+  theme_minimal() +
+  theme(
+    legend.position = "none",  # Legende entfernt
+    axis.text.x = element_blank(),  # Entfernt überflüssige Achsenbeschriftungen
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(), # Entfernt überflüssige Achsenmarkierungen
+    panel.grid.major = element_blank(),  # Entfernt Gitterlinien für bessere Lesbarkeit
+    panel.grid.minor = element_blank()
+  ) +
+  labs(
+    x = "Einkommensgruppe (Herkunft → Ziel)",
+    y = "Anzahl der Migrationen"
+  )
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+#| label: Verteilung der Einkommensklassen
+
+
+income_distribution <- combined_flows %>%
+  filter(incomelevelfrom != "INX", incomelevelto != "INX") %>%
+  group_by(incomelevelfrom, incomelevelto) %>%
+  summarise(total_migrations = sum(n_migrations, na.rm = TRUE), .groups = "drop")
+
+# Prozentuale Verteilung
+income_distribution_percent <- income_distribution %>%
+  group_by(incomelevelfrom) %>%
+  mutate(percent_migrations = total_migrations / sum(total_migrations) * 100)
+
+# Netto-Migration berechnen
+net_migration <- income_distribution %>%
+  group_by(incomelevelto) %>%
+  summarise(incoming = sum(total_migrations)) %>%
+  left_join(
+    income_distribution %>%
+      group_by(incomelevelfrom) %>%
+      summarise(outgoing = sum(total_migrations)),
+    by = c("incomelevelto" = "incomelevelfrom")
+  ) %>%
+  mutate(net_migration = incoming - outgoing)
+
+# Ausgabe der Netto-Migration
+print(net_migration)
+
+# Gestapeltes Balkendiagramm mit Prozenten
+group_colors <- c(
+  "LIC" = "#FFD700",  # Gold
+  "LMC" = "#FF8C00",  # Dunkelorange
+  "UMC" = "#FF4500",  # Rot-Orange
+  "HIC" = "#B22222"   # Feuerrot
+)
+
+ggplot(income_distribution_percent, aes(x = incomelevelfrom, y = percent_migrations, fill = incomelevelto)) +
+  geom_bar(stat = "identity", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Migrationen zwischen Einkommensklassen (prozentual)",
+    x = "Einkommensklasse (Herkunftsländer)",
+    y = "Prozentuale Migrationen",
+    fill = "Ziel-Einkommensklasse"
+  ) +
+  scale_fill_brewer(palette = "Set2")+
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
+  )
+
+# Korrelation und lineare Regression
+# Bereinigung der Daten
+analysis_data <- combined_flows %>%
+  filter(!is.na(n_migrations), !is.na(gdp_per_capitafrom)) %>%
+  select(n_migrations, gdp_per_capitafrom, gdp_per_capitato, regionfrom)
+
+# Korrelation berechnen
+correlation <- cor(analysis_data$gdp_per_capitafrom, analysis_data$n_migrations, use = "complete.obs")
+print(paste("Korrelation zwischen GDP pro Kopf und Anzahl der Migrationen:", round(correlation, 3)))
+
+# Einfaches lineares Modell
+lm_model <- lm(n_migrations ~ gdp_per_capitafrom, data = analysis_data)
+print(summary(lm_model))
+
+# Nicht-lineares Modell
+lm_model_non_linear <- lm(n_migrations ~ poly(gdp_per_capitafrom, 2), data = analysis_data)
+print(summary(lm_model_non_linear))
+
+# Modell mit Ziel-GDP
+lm_model_target_gdp <- lm(n_migrations ~ gdp_per_capitafrom + gdp_per_capitato, data = analysis_data)
+print(summary(lm_model_target_gdp))
+
+# Visualisierung der linearen Beziehung
+ggplot(analysis_data, aes(x = gdp_per_capitafrom, y = n_migrations)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = "Zusammenhang zwischen GDP pro Kopf und Anzahl der Migrationen",
+    x = "GDP pro Kopf",
+    y = "Anzahl der Migrationen"
+  ) +
+  theme_minimal()
+
+#  Erweiterte Modelle
+# Modell mit Region und GDP
+extended_model <- lm(n_migrations ~ gdp_per_capitafrom + regionfrom + gdp_per_capitato, data = analysis_data)
+print(summary(extended_model))
+```
+
+```{r}
+# **5. Heatmap der Migrationen zwischen Einkommensklassen**
+ggplot(income_distribution, aes(x = incomelevelfrom, y = incomelevelto, fill = total_migrations)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(
+    title = "Heatmap: Migration zwischen Einkommensklassen",
+    x = "Herkunft",
+    y = "Ziel",
+    fill = "Migrationen"
+  ) +
+  theme_minimal()
+
+```
+
+## Forschergruppen und Demokratie
+
+```{r}
+#| label: Forschergruppen und Demokratie (Robustheit auf Heterogenität)
+library(dplyr)
+
+# Gesamt-Korrelationskoeffizient für die gesamte Stichprobe
+gesamt_korrelation <- cor(filtered_df1_groups$v2x_libdem, filtered_df1_groups$netmigrate_mean, use = "complete.obs")
+
+# Korrelation pro Forschergruppe (Quantil)
+korrelation_pro_quantil <- filtered_df1_groups %>%
+  group_by(Researchergroup) %>%
+  summarise(Korrelation = cor(v2x_libdem, netmigrate_mean, use = "complete.obs"))
+
+# Ergebnisse ausgeben
+print(paste("Gesamt-Korrelation:", round(gesamt_korrelation, 3)))
+print(korrelation_pro_quantil)
+
+# Scatterplot mit Facetten für jede Wissenschaftler-Quantilgruppe
+ggplot(filtered_df1_groups, aes(x = v2x_libdem, y = netmigrate_mean, color = label)) +
+  geom_jitter(alpha = 0.4, width = 0.02, height = 0.02) +  # Jitter für bessere Verteilung
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, color = "black", size = 0.8) +
+  facet_wrap(~ Researchergroup, scales = "free_y") +  # Separate Plots für jedes Quantil mit freien y-Achsen, aber fester x-Achse
+  scale_x_continuous(limits = c(0, 1)) +  # LDI-Skala fest von 0 bis 1
+  scale_color_manual(values = color_palette) +  # Farben direkt auf die korrekten Labels zuweisen
+  theme_minimal() +
+  labs(title = "Demokratie und Wissenschaftlermigration nach Forschungsquantilen",
+       x = "Demokratie-Index (LDI)",
+       y = "Netto-Migrationsrate",
+       color = "Wissenschaftler",
+       caption = "Quelle: Scopus & OpenAlex")
+
+```
+
+```{r}
+#| label: Forschergruppen und Demokratie (Robustheit auf Heterogenität mit Scatterplot)
+library(ggplot2)
+library(dplyr)
+
+ggplot(filtered_df1_groups, aes(x = v2x_libdem, y = netmigrate_mean, color = Researchergroup)) +
+  geom_point(alpha = 0.5, size = 1.2, color ="#4575b4") +  # Punktgröße optimiert
+  geom_smooth(method = "loess", se = FALSE, color = "black", size = 0.9) +  # Loess für flexible Regression
+  facet_wrap(~ Researchergroup, scales = "free") +  # Y-Achsen individuell für jede Gruppe anpassen
+  scale_x_continuous(limits = c(0, 1), breaks = c(0, 1)) +  # Nur 0 und 1 als Achsenwerte anzeigen
+  scale_color_manual(values = color_palette) +  # Angepasste Farben für jede Gruppe
+  theme_bw() +  # Klarer Hintergrund
+  labs(
+    x = "Demokratie-Index (LDI)",
+    y = "Nettomigrationsrate",
+    color = "Forschergruppe",
+    caption = "Quelle: Scopus & OpenAlex"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    legend.position = "bottom",
+    legend.text = element_text(size = 9),
+    strip.text = element_text(size = 10, face = "bold")
+  )
+
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+#| label: Regressionsergebnisse Migration und Demokratie
+# Pakete laden
+library(plm)
+library(pglm)
+library(dplyr)
+library(stargazer)
+
+# Bereinigung der Daten & Quadratischer LDI-Term
+
+# Panel-Daten definieren
+df_panel <- df1 %>%
+  mutate(Researchergroup = cut(
+    paddedpop_mean,
+    breaks = quantile(paddedpop_mean, probs = seq(0, 1, by = 1/6), na.rm = TRUE),
+    include.lowest = TRUE,
+    labels = paste0("Q", 1:6)
+  )) %>%
+  mutate(
+    ldi_squared = v2x_libdem^2,  # Quadratischer Term des Demokratieindex
+    gdp_per_capita = as.numeric(gdp_per_capita),  # Sicherstellen, dass die Variable numerisch ist
+    paddedpop_mean = as.numeric(paddedpop_mean)  # Forscherdichte: Durchschnitt aus OpenAlex & Scopus
+  ) %>%
+  drop_na(v2x_libdem, gdp_per_capita, paddedpop_mean, Researchergroup)
+
+
+
+# Variablen auswählen, die in den Modellen verwendet werden
+df_panel <- df_panel %>%
+  select(countrycode, year, v2x_libdem, gdp_per_capita, netmigrate_mean, paddedpop_mean, region, ldi_squared, Researchergroup, v2cafres)  
+
+
+df_panel <- df_panel %>%
+  mutate(
+    v2x_libdem_std = scale(v2x_libdem, center = TRUE, scale = TRUE)[,1],  
+    ldi_squared_std = v2x_libdem_std^2,  # Quadratische Variable für nicht-lineare Effekte
+    gdp_per_capita_std = scale(gdp_per_capita, center = TRUE, scale = TRUE)[,1],
+    v2cafres = scale(v2cafres, center = TRUE, scale = TRUE)[,1]
+  )
+
+# Panel-Daten formatieren
+df_panel <- pdata.frame(df_panel, index = c("countrycode", "year"))
+
+# Pakete laden
+library(plm)
+library(dplyr)
+library(stargazer)
+
+# Sicherstellen, dass "year" numerisch ist
+df_panel <- df_panel %>%
+  mutate(year = as.numeric(as.character(year)))  # Falls year ein Faktor ist
+
+# Lagged Variablen erstellen (t-1)
+lags <- c(1)  # Nur t-1
+vars_to_lag <- c("netmigrate_mean", "v2x_libdem_std", "gdp_per_capita_std")  # Variablen, die gelaggt werden sollen
+
+for (var in vars_to_lag) {
+  for (lag in lags) {
+    df_panel_previous <- df_panel %>%
+      select(countrycode, year, all_of(var)) %>%
+      mutate(year = year + lag)  # Jahr um 1 erhöhen (t-1)
+
+    # Mergen mit Original-Datensatz
+    df_panel <- df_panel %>%
+      left_join(df_panel_previous, by = c("countrycode", "year"), suffix = c("", paste0("_lag", lag)))
+    
+    # Richtiges Umbenennen der Lagged-Variablen
+    new_col_name <- paste0(var, "_lag", lag)
+    df_panel <- df_panel %>%
+      rename(!!new_col_name := paste0(var, "_lag", lag))
+  }
+}
+
+
+
+
+# -----------------
+# 📌 Standard Panel-Regressionen (Fixed Effects)
+# -----------------
+
+# Modell 1: Basis-Modell mit LDI & GDP pro Kopf
+model1 <- plm(netmigrate_mean ~ v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel, model = "within")
+
+# Modell 2: Quadratische Erweiterung mit LDI²
+model2 <- plm(netmigrate_mean ~ v2x_libdem_std + ldi_squared_std + gdp_per_capita_std, 
+              data = df_panel, model = "within")
+
+# Modell 3: Regionen hinzufügen
+model3 <- plm(netmigrate_mean ~ v2x_libdem_std + ldi_squared_std + gdp_per_capita_std + as.factor(region), 
+              data = df_panel, model = "within")
+
+# -----------------
+# 📌 Modelle mit Lags
+# -----------------
+
+# Modell 4: Lag der abhängigen Variablen (t-1)
+model4 <- plm(netmigrate_mean ~ netmigrate_mean_lag1 + v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel, model = "within")
+
+# Modell 5: Lags der unabhängigen Variablen (t-1)
+model5 <- plm(netmigrate_mean ~ v2x_libdem_std_lag1 + gdp_per_capita_std_lag1, 
+              data = df_panel, model = "within")
+
+# Modell 6: Mehrere Lags (t-1)
+model6 <- plm(netmigrate_mean ~ netmigrate_mean_lag1 + v2x_libdem_std_lag1 + gdp_per_capita_std_lag1, 
+              data = df_panel, model = "within")
+
+
+# -----------------
+# AIC & Modellvergleich
+# -----------------
+
+# Funktion zur manuellen Berechnung des AIC für plm() Modelle
+AIC_plm <- function(model) {
+  RSS <- sum(resid(model)^2)  # Residual Sum of Squares
+  k <- length(coef(model))  # Anzahl der Parameter
+  n <- nobs(model)  # Anzahl der Beobachtungen
+  return(n * log(RSS/n) + 2 * k)
+}
+
+# Berechnung für alle plm-Modelle
+aic_values <- data.frame(
+  Modell = c("Model 1", "Model 2", "Model 3", "Model 4", "Model 5", "Model 6"),
+  AIC = c(AIC_plm(model1), AIC_plm(model2), AIC_plm(model3), AIC_plm(model4), AIC_plm(model5), AIC_plm(model6))
+)
+
+# -----------------
+# 📌 Ergebnisse ausgeben mit Stargazer (LaTeX oder Text)
+# -----------------
+
+stargazer(model1, model2, model3, model4, model5, model6, 
+          type = "latex", 
+          title = "Regressionsergebnisse: Migration und Demokratie",
+          dep.var.labels = "Netto-Migrationsrate",
+          covariate.labels = c("LDI (Demokratie-Index)", "LDI² (Nicht-linearer Effekt)", 
+                               "BIP pro Kopf (standardisiert)", "Regionale Dummy-Variablen", 
+                               "Lagged Netto-Migration (t-1)", "Lagged LDI (t-1)", "Lagged BIP pro Kopf (t-1)"),
+          omit.stat = c("f", "ser"), digits = 2, 
+          column.sep.width = "2pt", font.size = "scriptsize",
+          out = "Regressionstabelle1.tex")
+
+# -----------------
+# 📌 AIC-Werte ausgeben
+# -----------------
+print(aic_values)
+
+
+
+# Robust Standard Errors (HAC = Heteroskedastizität & Autokorrelation-konsistent)
+library(sandwich)
+
+coeftest(model1, vcov = vcovHC(model1, type = "HC0", cluster = "group"))
+coeftest(model2, vcov = vcovHC(model2, type = "HC0", cluster = "group"))
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+#| label: reversed Causality 
+
+## Pakete laden
+library(ggplot2)
+library(dplyr)
+
+# Scatterplot für Demokratie → Migration (Begrenzung der X-Achse nicht nötig)
+p1 <- ggplot(df1, aes(x = v2x_libdem, y = netmigrate_mean)) +
+  geom_point(alpha = 0.5, color = "blue") +  
+  geom_smooth(method = "lm", color = "red", se = FALSE, linetype = "dashed") +  
+  geom_smooth(method = "loess", color = "black", se = TRUE) +  
+  labs(title = "Demokratieindex → Migration",
+       x = "Demokratieindex (LDI, standardisiert)",
+       y = "Netto-Migrationsrate",
+       caption = "Quelle: Eigene Berechnungen") +
+  ylim(-0.125, 0.125) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+
+# Scatterplot für Wissenschaftliche Migration → Demokratie mit begrenzter x-Achse
+p2 <- ggplot(df1, aes(x = netmigrate_mean, y = v2x_libdem)) +
+  geom_point(alpha = 0.5, color = "blue") +  
+  geom_smooth(method = "lm", color = "red", se = FALSE, linetype = "dashed") +  
+  geom_smooth(method = "loess", color = "black", se = TRUE) +  
+  labs(title = "Wissenschaftliche Migration → Demokratie",
+       x = "Netto-Migration",
+       y = "Demokratieindex (LDI, standardisiert)",
+       caption = "Quelle: Eigene Berechnungen") +
+  xlim(-0.125, 0.125) +  # Begrenzung der x-Achse
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+# Plot anzeigen
+print(p2)
+print(p1)
+
+
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+
+library(car)
+vif_test <- vif(lm(netmigrate_mean ~ v2x_libdem + ldi_squared + gdp_per_capita + paddedpop_mean
+                   + region, data = df_panel))
+print(vif_test)
+vif_test <- vif(lm(netmigrate_mean ~ v2x_libdem + gdp_per_capita + paddedpop_mean + region, data = df_panel))
+print(vif_test)
+
+cor(df_panel$v2x_libdem, df_panel$ldi_squared)
+#Falls die Korrelation sehr hoch (>0.9) ist, kann es besser sein, auf den quadratischen Term zu verzichten.
+
+
+summary(df_panel$gdp_per_capita_std_lag1)
+
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+#| label: Regressionergebnisse Demokratie und Forschergruppen q1-q6
+# Pakete laden
+library(plm)
+library(stargazer)
+library(dplyr)
+
+# -----------------
+# Standard Regressionen (Gesamtdaten)
+# -----------------
+
+# Modell 1: Panelregression mit LDI und BIP pro Kopf
+model1 <- plm(netmigrate_mean ~ v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel, model = "within")
+
+# -----------------
+# Quantil-Regressionen (Unterschiedliche Gruppen mit 6 Quantilen)
+# -----------------
+
+# Modell 2: Niedrigste Wissenschaftler-Quantile (Q1-Q2)
+model2 <- plm(netmigrate_mean ~ v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel %>% filter(Researchergroup %in% c("Q1", "Q2")), model = "within")
+
+# Modell 3: Mittlere Wissenschaftler-Quantile (Q3-Q4)
+model3 <- plm(netmigrate_mean ~ v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel %>% filter(Researchergroup %in% c("Q3", "Q4")), model = "within")
+
+# Modell 4: Höchste Wissenschaftler-Quantile (Q5-Q6)
+model4 <- plm(netmigrate_mean ~ v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel %>% filter(Researchergroup %in% c("Q5", "Q6")), model = "within")
+
+# -----------------
+# Ergebnisse ausgeben mit Stargazer (LaTeX & Text)
+# -----------------
+
+stargazer(model1, model2, model3, model4, 
+          type = "latex", 
+          title = "Regressionsergebnisse: Demokratie und Quantile",
+          dep.var.labels = "Netto-Migrationsrate",
+          covariate.labels = c("LDI (Demokratie-Index)", "BIP pro Kopf"),
+          omit.stat = c("f", "ser"), digits = 2, 
+          column.sep.width = "2pt", font.size = "scriptsize",
+          out = "Regressionstabelle_neu.tex")  
+
+stargazer(model1, model2, model3, model4, 
+          type = "text", 
+          title = "Regressionsergebnisse: Demokratie und Quantile",
+          dep.var.labels = "Netto-Migrationsrate",
+          covariate.labels = c("LDI (Demokratie-Index)", "BIP pro Kopf"),
+          omit.stat = c("f", "ser"), digits = 2, 
+          column.sep.width = "2pt", font.size = "scriptsize",
+          out = "Regressionstabelle_neu.txt")  
+
+# -----------------
+# Korrelationen ohne Lag-Variablen
+# -----------------
+
+# Korrelation zwischen Netto-Migrationsrate und Demokratie-Index
+cor(df_panel$netmigrate_mean, df_panel$v2x_libdem_std, use = "complete.obs")
+
+# Korrelation zwischen Netto-Migrationsrate und BIP pro Kopf
+cor(df_panel$netmigrate_mean, df_panel$gdp_per_capita_std, use = "complete.obs")
+
+# Korrelation zwischen Demokratie-Index und BIP pro Kopf
+cor(df_panel$v2x_libdem_std, df_panel$gdp_per_capita_std, use = "complete.obs")
+
+cor(df_panel$v2x_libdem, df_panel$v2cafres, use = "complete.obs")
+
+
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+# Pakete laden
+library(plm)
+library(stargazer)
+library(dplyr)
+library(car)
+library(lmtest)
+library(sandwich)  # Für robuste Standardfehler
+
+# -----------------
+# Log-Transformation der abhängigen Variable (falls notwendig)
+# -----------------
+df_panel$netmigrate_log <- log(df_panel$netmigrate_mean + 1)  # +1 um Nullwerte zu vermeiden
+
+# -----------------
+# Winsorizing der abhängigen Variable (1%-99%)
+# -----------------
+lower_bound <- quantile(df_panel$netmigrate_log, 0.01, na.rm = TRUE)
+upper_bound <- quantile(df_panel$netmigrate_log, 0.99, na.rm = TRUE)
+
+df_panel$netmigrate_winsor <- pmin(pmax(df_panel$netmigrate_log, lower_bound), upper_bound)
+
+# -----------------
+# Standard Regressionen (Gesamtdaten) mit winsorisierter Variable
+# -----------------
+
+# Modell 1: Panelregression mit v2cafres und BIP pro Kopf (mit winsorisierter Variable)
+model1 <- plm(netmigrate_winsor ~ v2cafres + gdp_per_capita_std, 
+              data = df_panel, model = "within")
+
+# -----------------
+# Quantil-Regressionen (Unterschiedliche Gruppen mit 6 Quantilen)
+# -----------------
+
+# Modell 2: Niedrigste Wissenschaftler-Quantile (Q1-Q2)
+model2 <- plm(netmigrate_winsor ~ v2cafres + gdp_per_capita_std, 
+              data = df_panel %>% filter(Researchergroup %in% c("Q1", "Q2")), model = "within")
+
+# Modell 3: Mittlere Wissenschaftler-Quantile (Q3-Q4)
+model3 <- plm(netmigrate_winsor ~ v2cafres + gdp_per_capita_std, 
+              data = df_panel %>% filter(Researchergroup %in% c("Q3", "Q4")), model = "within")
+
+# Modell 4: Höchste Wissenschaftler-Quantile (Q5-Q6)
+model4 <- plm(netmigrate_winsor ~ v2cafres + gdp_per_capita_std, 
+              data = df_panel %>% filter(Researchergroup %in% c("Q5", "Q6")), model = "within")
+
+# -----------------
+# Ergebnisse ausgeben mit Stargazer (LaTeX & Text)
+# -----------------
+
+stargazer(model1, model2, model3, model4, 
+          type = "latex", 
+          title = "Regressionsergebnisse: Migration & Forschungsfreiheit (Winsorized)",
+          dep.var.labels = "Log Netto-Migrationsrate (Winsorized)",
+          covariate.labels = c("Forschungsfreiheit", "BIP pro Kopf"),
+          omit.stat = c("f", "ser"), digits = 2, 
+          column.sep.width = "2pt", font.size = "scriptsize") 
+
+stargazer(model1, model2, model3, model4, 
+          type = "text", 
+          title = "Regressionsergebnisse: Migration & Forschungsfreiheit (Winsorized)",
+          dep.var.labels = "Log Netto-Migrationsrate (Winsorized)",
+          covariate.labels = c("Forschungsfreiheit", "BIP pro Kopf"),
+          omit.stat = c("f", "ser"), digits = 2, 
+          column.sep.width = "2pt", font.size = "scriptsize")
+
+# -----------------
+# Korrelationen prüfen
+# -----------------
+
+cor(df_panel$netmigrate_winsor, df_panel$v2cafres, use = "complete.obs")
+cor(df_panel$netmigrate_winsor, df_panel$gdp_per_capita_std, use = "complete.obs")
+cor(df_panel$v2cafres, df_panel$gdp_per_capita_std, use = "complete.obs")
+
+# -----------------
+# Multikollinearität (VIF)
+# -----------------
+vif_values <- vif(lm(netmigrate_winsor ~ v2cafres + gdp_per_capita_std, data = df_panel))
+print(vif_values)
+
+# -----------------
+# Modellgüte (R² & Adjusted R²)
+# -----------------
+summary(model1)$r.squared
+summary(model1)$adj.r.squared
+
+# -----------------
+# Heteroskedastizität prüfen (Breusch-Pagan-Test)
+# -----------------
+bptest(model1)
+
+# Falls p-Wert < 0.05: Robuste Standardfehler berechnen
+coeftest(model1, vcov = vcovHC(model1, type = "HC3"))  # Robuste Standardfehler (Heteroskedastizität-korrigiert)
+
+# -----------------
+# Autokorrelation prüfen (Durbin-Watson-Test)
+# -----------------
+dwtest(model1)
+
+# -----------------
+# Residuenanalyse
+# -----------------
+
+# Histogramm der Residuen nach Winsorizing
+hist(resid(model1), main = "Residuenverteilung (Winsorized)", col = "lightblue", breaks = 20)
+
+# Shapiro-Wilk-Test für Normalverteilung
+shapiro.test(resid(model1))
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+# Pakete laden
+library(plm)
+library(stargazer)
+library(dplyr)
+library(car)
+library(lmtest)
+library(sandwich)  # Für robuste Standardfehler
+
+# -----------------
+# Log-Transformation der abhängigen Variable (falls notwendig)
+# -----------------
+df_panel$netmigrate_log <- log(df_panel$netmigrate_mean + 1)  # +1 um Nullwerte zu vermeiden
+
+# -----------------
+# Winsorizing der abhängigen Variable (1%-99%)
+# -----------------
+lower_bound <- quantile(df_panel$netmigrate_log, 0.01, na.rm = TRUE)
+upper_bound <- quantile(df_panel$netmigrate_log, 0.99, na.rm = TRUE)
+
+df_panel$netmigrate_winsor <- pmin(pmax(df_panel$netmigrate_log, lower_bound), upper_bound)
+
+# -----------------
+# Standard Regressionen (Gesamtdaten) mit winsorisierter Variable
+# -----------------
+
+# Modell 1: Panelregression mit Demokratie-Index und BIP pro Kopf
+model1 <- plm(netmigrate_winsor ~ v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel, model = "within")
+
+# -----------------
+# Quantil-Regressionen (Unterschiedliche Gruppen mit 6 Quantilen)
+# -----------------
+
+# Modell 2: Niedrigste Wissenschaftler-Quantile (Q1-Q2)
+model2 <- plm(netmigrate_winsor ~ v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel %>% filter(Researchergroup %in% c("Q1", "Q2")), model = "within")
+
+# Modell 3: Mittlere Wissenschaftler-Quantile (Q3-Q4)
+model3 <- plm(netmigrate_winsor ~ v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel %>% filter(Researchergroup %in% c("Q3", "Q4")), model = "within")
+
+# Modell 4: Höchste Wissenschaftler-Quantile (Q5-Q6)
+model4 <- plm(netmigrate_winsor ~ v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel %>% filter(Researchergroup %in% c("Q5", "Q6")), model = "within")
+
+# -----------------
+# Ergebnisse ausgeben mit Stargazer (LaTeX & Text)
+# -----------------
+
+stargazer(model1, model2, model3, model4, 
+          type = "latex", 
+          title = "Regressionsergebnisse: Migration & Demokratie (Winsorized)",
+          dep.var.labels = "Log Netto-Migrationsrate (Winsorized)",
+          covariate.labels = c("Demokratie-Index", "BIP pro Kopf"),
+          omit.stat = c("f", "ser"), digits = 2, 
+          column.sep.width = "2pt", font.size = "scriptsize")
+
+stargazer(model1, model2, model3, model4, 
+          type = "text", 
+          title = "Regressionsergebnisse: Migration & Demokratie (Winsorized)",
+          dep.var.labels = "Log Netto-Migrationsrate (Winsorized)",
+          covariate.labels = c("Demokratie-Index", "BIP pro Kopf"),
+          omit.stat = c("f", "ser"), digits = 2, 
+          column.sep.width = "2pt", font.size = "scriptsize")
+
+# -----------------
+# Korrelationen prüfen
+# -----------------
+
+cor(df_panel$netmigrate_winsor, df_panel$v2x_libdem_std, use = "complete.obs")
+cor(df_panel$netmigrate_winsor, df_panel$gdp_per_capita_std, use = "complete.obs")
+cor(df_panel$v2x_libdem_std, df_panel$gdp_per_capita_std, use = "complete.obs")
+
+# -----------------
+# Multikollinearität (VIF)
+# -----------------
+vif_values <- vif(lm(netmigrate_winsor ~ v2x_libdem_std + gdp_per_capita_std, data = df_panel))
+print(vif_values)
+
+# -----------------
+# Modellgüte (R² & Adjusted R²)
+# -----------------
+summary(model1)$r.squared
+summary(model1)$adj.r.squared
+
+# -----------------
+# Heteroskedastizität prüfen (Breusch-Pagan-Test)
+# -----------------
+bptest(model1)
+
+# Falls p-Wert < 0.05: Robuste Standardfehler berechnen
+coeftest(model1, vcov = vcovHC(model1, type = "HC3"))  # Robuste Standardfehler (Heteroskedastizität-korrigiert)
+
+# -----------------
+# Autokorrelation prüfen (Durbin-Watson-Test)
+# -----------------
+dwtest(model1)
+
+# -----------------
+# Residuenanalyse
+# -----------------
+
+# Histogramm der Residuen nach Winsorizing
+hist(resid(model1), main = "Residuenverteilung (Winsorized)", col = "lightblue", breaks = 20)
+
+# Shapiro-Wilk-Test für Normalverteilung
+shapiro.test(resid(model1))
+
+```
+
+# Clusteranalyse
+
+```{r}
+#| label: Clusteranalyse 
+library(dplyr)
+library(ggplot2)
+library(cluster)
+library(factoextra)
+
+# Datenauswahl und Transformation mit netmigrate_mean & paddedpop_relative
+df_cluster <- df1 %>%
+  select(countryname, region, incomelevel, democracy_category, Forschungsfreiheit_category , netmigrate_mean, paddedpop_relative) %>%
+  mutate(netmigrate_mean = ifelse(netmigrate_mean < quantile(netmigrate_mean, 0.05, na.rm = TRUE), 
+                                  quantile(netmigrate_mean, 0.05, na.rm = TRUE), netmigrate_mean),
+         netmigrate_mean = ifelse(netmigrate_mean > quantile(netmigrate_mean, 0.95, na.rm = TRUE), 
+                                  quantile(netmigrate_mean, 0.95, na.rm = TRUE), netmigrate_mean))
+
+# Fehlende Werte entfernen
+df_cluster <- na.omit(df_cluster)
+
+# Skalierung der numerischen Variablen
+df_scaled <- scale(df_cluster[, -c(1,2,3,4,5)])  # Entfernt Kategorische Variablen (Land, Region, Einkommenslevel, Demokratie-Kategorie)
+
+# Optimale Cluster-Anzahl bestimmen (Silhouetten-Methode)
+fviz_nbclust(df_scaled, kmeans, method = "silhouette") + ggtitle("Silhouette-Methode für optimale Clusteranzahl")
+
+library(cluster)
+set.seed(123)
+pam_result <- pam(df_scaled, k = 4)  # Alternative Methode
+df_cluster$Cluster <- as.factor(pam_result$cluster)
+pca_result <- prcomp(df_scaled, scale = TRUE)
+df_pca <- data.frame(pca_result$x[, 1:2])  # Nutze nur die ersten zwei Hauptkomponenten
+
+
+ggplot(df_cluster, aes(x = Cluster, fill = Cluster)) +
+  geom_bar() +
+  theme_minimal() +
+  scale_fill_manual(values = c("#4DAF4A", "#E41A1C", "#66C2A5", "#377EB8")) +  
+  labs(title = "Anzahl der Länder pro Cluster",
+       x = "Cluster",
+       y = "Anzahl der Länder") +
+  theme(legend.position = "none")
+
+# Boxplot zur Analyse von Brain Drain & Brain Gain nach Cluster
+ggplot(df_cluster, aes(x = Cluster, y = netmigrate_mean, fill = Cluster)) +
+  geom_boxplot() +
+  theme_minimal() +
+  scale_fill_manual(values = c("#4DAF4A", "#E41A1C", "#66C2A5", "#377EB8")) +  # Hellblau, Grün, Dunkelblau, Rot
+  labs(title = "Brain Drain & Brain Gain nach Cluster (mit netmigrate_mean)",
+       x = "Cluster",
+       y = "Netto-Migrationsrate (Mittelwert)") +
+  theme(legend.position = "none")
+
+# Barplot zur Visualisierung der Netto-Migration nach Region
+ggplot(df_cluster %>% filter(incomelevel != "INX"),  # Entfernt "INX" aus den Einkommensniveaus
+       aes(x = factor(incomelevel, levels = c("LIC", "LMC", "UMC", "HIC")), 
+                        y = netmigrate_mean, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") + 
+  coord_flip() +
+  theme_minimal() +
+  scale_fill_manual(values = c("#4DAF4A", "#E41A1C", "#66C2A5", "#377EB8")) +  
+  labs(title = "Netto-Migration nach Einkommensniveau",
+       x = "Einkommensniveau",
+       y = "Netto-Migrationsrate") +
+  theme(legend.position = "right")
+
+region_order <- df_cluster %>%
+  count(region, Cluster) %>%
+  spread(Cluster, n, fill = 0) %>%  # Erstellt eine breitere Tabelle für Cluster-Häufigkeiten
+  arrange(desc(`1`)) %>%  # Sortiert zuerst nach Häufigkeit von Cluster 2, dann Cluster 1
+  pull(region)  # Extrahiert die sortierte Liste der Regionen
+
+rename_regions <- function(df) {
+  df %>%
+    mutate(region = as.character(region)) %>%
+    mutate(region = dplyr::recode(region,
+      "Latin America & Caribbean" = "Lateinamerika & Karibik",
+      "South Asia" = "Südasien",
+      "Sub-Saharan Africa" = "Subsahara-Afrika",
+      "Europe & Central Asia" = "Europa & Zentralasien",
+      "Middle East & North Africa" = "Naher Osten & Nordafrika",
+      "East Asia & Pacific" = "Ostasien & Pazifik",
+      "North America" = "Nordamerika"
+    ))
+}
+df_cluster <- rename_regions(df_cluster)
+region_order <- c(
+  "Lateinamerika & Karibik",
+  "Südasien",
+  "Subsahara-Afrika",
+  "Europa & Zentralasien",
+  "Naher Osten & Nordafrika",
+  "Ostasien & Pazifik",
+  "Nordamerika"
+)
+
+
+ggplot(df_cluster, aes(x = factor(region, levels = region_order), y = netmigrate_mean, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") + 
+  coord_flip() +
+  theme_minimal() +
+  scale_fill_manual(values = c("#4DAF4A", "#E41A1C", "#66C2A5", "#377EB8")) +  
+  labs(title = "Netto-Migration nach Region (sortiert nach Cluster-Häufigkeit)",
+       x = "Region",
+       y = "Netto-Migrationsrate") +
+  theme(legend.position = "right")
+
+
+
+# barplot mit Forschungsfreiheit 
+ggplot(df_cluster, aes(x = factor(Forschungsfreiheit_category, levels = c("Low", "Medium", "High")), 
+                        y = netmigrate_mean, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") + 
+  coord_flip() +
+  theme_minimal() +
+  scale_fill_manual(values = c("#4DAF4A", "#E41A1C", "#66C2A5", "#377EB8")) +  
+  labs(title = "Netto-Migration nach Forschungsfreiheit",
+       x = "Forschungsfreiheits-Kategorie",
+       y = "Netto-Migrationsrate") +
+  theme(legend.position = "right")
+
+
+# Cluster-Verteilung nach Region
+ggplot(df_cluster %>% count(region, Cluster), 
+       aes(x = reorder(region, -n), y = n, fill = Cluster)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 1) +
+  theme_minimal() +
+  scale_fill_manual(values = c("#4DAF4A", "#E41A1C", "#66C2A5", "#377EB8")) +  
+  labs(
+       x = "Regionen",
+       y = "Anzahl der Länder",
+       fill = "Cluster") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 10),
+        plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+ggplot(df_cluster, aes(x = netmigrate_mean, y = paddedpop_relative, color = Cluster)) +
+  geom_point(alpha = 0.7, size = 2) + 
+ stat_ellipse(aes(fill = Cluster), alpha = 0.2) +  # Konvexe Hüllen um Cluster
+  scale_color_manual(values = c("#4DAF4A", "#E41A1C", "#66C2A5", "#377EB8")) +  # Cluster-Farben: Grün, Rot, Hellblau, Dunkelblau
+  scale_fill_manual(values = c("#4DAF4A", "#E41A1C", "#66C2A5", "#377EB8")) +
+  theme_minimal() +
+  labs(
+       y = "Wissenschaftler/ 100k Einwohner",
+       x = "Netto-Migrationsrate",
+       color = "Cluster",
+       fill = "Cluster") +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+# Umwandlung der Variablennamen in verständliche Bezeichnungen
+df_long <- df_cluster %>%
+  select(democracy_category, Forschungsfreiheit_category, netmigrate_mean, Cluster) %>%
+  pivot_longer(cols = c(democracy_category, Forschungsfreiheit_category),
+               names_to = "Kategorie",
+               values_to = "Wert") %>%
+  mutate(Kategorie = case_when(
+    Kategorie == "democracy_category" ~ "Demokratie",
+    Kategorie == "Forschungsfreiheit_category" ~ "Forschungsfreiheit"
+  ))
+
+
+
+
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+
+# 📌 Plot 1: Netto-Migration nach Einkommensniveau
+p_income <- ggplot(df_cluster %>% filter(incomelevel != "INX"),  
+       aes(x = factor(incomelevel, levels = c("LIC", "LMC", "UMC", "HIC")), 
+           y = netmigrate_mean, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") + 
+  coord_flip() +
+  theme_minimal() +
+  scale_fill_manual(values = c("#4DAF4A", "#E41A1C", "#66C2A5", "#377EB8")) +  
+  labs(
+       x = "Einkommensniveau",
+       y = "Netto-Migrationsrate") +
+  theme(legend.position = "bottom")
+
+# 📌 Regionensortierung nach Clusterhäufigkeit
+region_order <- df_cluster %>%
+  count(region, Cluster) %>%
+  spread(Cluster, n, fill = 0) %>%
+  arrange(desc(`1`)) %>%
+  pull(region)
+
+# 📌 Plot 2: Netto-Migration nach Region
+p_region <- ggplot(df_cluster, aes(x = factor(region, levels = region_order), 
+                                   y = netmigrate_mean, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") + 
+  coord_flip() +
+  theme_minimal() +
+  scale_fill_manual(values = c("#4DAF4A", "#E41A1C", "#66C2A5", "#377EB8")) +  
+  labs(
+       x = "Region",
+       y = "Netto-Migrationsrate") +
+  theme(legend.position = "bottom")
+# Gemeinsame Darstellung mit einer zentrierten Legende unten
+combined_plot <- p_region + p_income +
+  plot_layout(guides = "collect") &
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9)
+  )
+
+# Plot anzeigen
+combined_plot
+
+```
+
+```{r fig-netmigration, fig.width=6, fig.height=3}
+#| label: fig-netmigration
+#| fig-cap: "Netto-Migration nach Demokratie und Forschungsfreiheit"
+#| fig-width: 6
+#| fig-height: 3
+ggplot(df_long, aes(x = factor(Wert, levels = c("Low", "Medium", "High")), 
+                    y = netmigrate_mean, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") + 
+  coord_flip() +
+  theme_minimal() +
+  scale_fill_manual(values = c("#4DAF4A", "#E41A1C", "#66C2A5", "#377EB8")) +  
+  labs(
+       x = "",
+       y = "Netto-Migrationsrate") +
+  facet_wrap(~Kategorie, scales = "free_x") +  
+  theme(legend.position = "right",
+        aspect.ratio = 0.8)
+
+```
+
+## Histogramme Nettomigrationsrate
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+library(dplyr)
+library(ggplot2)
+#| label: Histogramm der Netto-Migrationsrate
+# Anzahl der fehlenden Werte (NA) pro Variable in df1
+na_counts <- colSums(is.na(df1))
+
+# Ausgabe der NA-Werte pro Variable
+print(na_counts)
+
+# Optional: Nur Variablen anzeigen, die fehlende Werte enthalten
+na_counts_filtered <- na_counts[na_counts > 0]
+print(na_counts_filtered)
+```
+
+```{r}
+#| label: Histogramm der Netto-Migrationsrate
+ggplot(df1, aes(x = netmigrate_mean)) +
+  geom_histogram(binwidth = 0.01, fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(xintercept = quantile(df1$netmigrate_mean, 0.05, na.rm = TRUE), linetype = "dashed", color = "red") +
+  geom_vline(xintercept = quantile(df1$netmigrate_mean, 0.95, na.rm = TRUE), linetype = "dashed", color = "red") +
+  theme_minimal() +
+  labs(title = "Histogramm der Netto-Migrationsrate mit 10%- und 90%-Grenze",
+       x = "Netto-Migrationsrate",
+       y = "Häufigkeit")
+
+
+summary(df_cluster$netmigrate_mean)
+summary(df1$netmigrate_mean)
+
+hist(df_cluster$netmigrate_mean, breaks = 20, col = "lightblue", main = "Verteilung der Netto-Migrationsrate", xlab = "Netto-Migrationsrate")
+
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+#| label: Auswanderungen und Demokratie Selber Code mit Outmigrations 
+require(mgcv)
+require(parallel)
+require(data.table)
+require(dplyr)  # Falls nicht bereits geladen
+
+dfmerged_openalex_scopus_country <- dfmerged_openalex_scopus_country %>%
+  filter(!is.na(countrycode), !is.na(year))
+
+# Zusammenführen der Datensätze und Berechnung der neuen Variablen 
+df2 <- dfmerged_openalex_scopus_country %>% 
+  left_join(filtered_V_dem %>% select(countrycode, year, v2x_libdem, v2cafres), 
+            by = c("countrycode", "year")) %>%
+  mutate(
+    # Berechnung der durchschnittlichen Auswanderungsrate statt Nettomigration
+    outmigrate_mean = rowMeans(select(., outmigrate_openalex, outmigrate_scopus), na.rm = TRUE),
+    
+    # Berechnung der Populationsvariablen
+    paddedpop_mean = rowMeans(select(., paddedpop_scopus, paddedpop_openalex), na.rm = TRUE),
+    paddedpop_relative = paddedpop_mean / population * 100000  # Forscheranteil an der Bevölkerung
+  ) %>%
+  filter(!is.na(countrycode), !is.na(year)) %>%
+  filter(year >= 1998 & year <= 2018) %>%
+  filter(!(countrycode == "TWN" & is.na(countryname))) %>%
+  drop_na(v2x_libdem, v2cafres)  # 36 Länder werden nicht miteinbezogen
+
+# Einteilung in Demokratie- und Forschungsfreiheitskategorien
+df2 <- df2 %>%
+  mutate(
+    democracy_category = ntile(v2x_libdem, 3),  # Einteilung in 3 gleich große Gruppen
+    Forschungsfreiheit_category = ntile(v2cafres, 3)
+  ) %>%
+  mutate(
+    democracy_category = case_when(
+      democracy_category == 1 ~ "Low",
+      democracy_category == 2 ~ "Medium",
+      democracy_category == 3 ~ "High"
+    ),
+    Forschungsfreiheit_category = case_when(
+      Forschungsfreiheit_category == 1 ~ "Low",
+      Forschungsfreiheit_category == 2 ~ "Medium",
+      Forschungsfreiheit_category == 3 ~ "High"
+    )
+  )
+
+# Pakete laden
+library(plm)
+library(pglm)
+library(dplyr)
+library(stargazer)
+
+# 📌 Panel-Daten vorbereiten
+df_panel2 <- df2 %>%
+  mutate(Researchergroup = cut(
+    paddedpop_mean,
+    breaks = quantile(paddedpop_mean, probs = seq(0, 1, by = 1/6), na.rm = TRUE),
+    include.lowest = TRUE,
+    labels = paste0("Q", 1:6)
+  )) %>%
+  mutate(
+    ldi_squared = v2x_libdem^2,  # Quadratischer Term des Demokratieindex
+    gdp_per_capita = as.numeric(gdp_per_capita),  # Sicherstellen, dass die Variable numerisch ist
+    paddedpop_mean = as.numeric(paddedpop_mean)  # Forscherdichte: Durchschnitt aus OpenAlex & Scopus
+  ) %>%
+  drop_na(v2x_libdem, gdp_per_capita, paddedpop_mean, Researchergroup)
+
+# 📌 Relevante Variablen auswählen
+df_panel2 <- df_panel2 %>%
+  select(countrycode, year, v2x_libdem, gdp_per_capita, outmigrate_mean, paddedpop_mean, 
+         region, ldi_squared, Researchergroup, v2cafres)  
+
+# 📌 Standardisierung von Variablen
+df_panel2 <- df_panel2 %>%
+  mutate(
+    v2x_libdem_std = scale(v2x_libdem, center = TRUE, scale = TRUE)[,1],  
+    ldi_squared_std = v2x_libdem_std^2,  # Quadratische Variable für nicht-lineare Effekte
+    gdp_per_capita_std = scale(gdp_per_capita, center = TRUE, scale = TRUE)[,1],
+    v2cafres = scale(v2cafres, center = TRUE, scale = TRUE)[,1]
+  )
+
+# 📌 Panel-Daten formatieren
+df_panel2 <- pdata.frame(df_panel2, index = c("countrycode", "year"))
+
+# Sicherstellen, dass "year" numerisch ist
+df_panel2 <- df_panel2 %>%
+  mutate(year = as.numeric(as.character(year)))  # Falls year ein Faktor ist
+
+# 📌 Lagged Variablen erstellen (t-1)
+lags <- c(1)  # Nur t-1
+vars_to_lag <- c("outmigrate_mean", "v2x_libdem_std", "gdp_per_capita_std")  # Variablen zum Laggen
+
+for (var in vars_to_lag) {
+  for (lag in lags) {
+    df_panel2_previous <- df_panel2 %>%
+      select(countrycode, year, all_of(var)) %>%
+      mutate(year = year + lag)  # Jahr um 1 erhöhen (t-1)
+
+    # Mergen mit Original-Datensatz
+    df_panel2 <- df_panel2 %>%
+      left_join(df_panel2_previous, by = c("countrycode", "year"), suffix = c("", paste0("_lag", lag)))
+    
+    # Richtiges Umbenennen der Lagged-Variablen
+    new_col_name <- paste0(var, "_lag", lag)
+    df_panel2 <- df_panel2 %>%
+      rename(!!new_col_name := paste0(var, "_lag", lag))
+  }
+}
+
+# -----------------
+# 📌 Panel-Regressionen (Fixed Effects)
+# -----------------
+
+# Modell 1: Basis-Modell mit LDI & GDP pro Kopf
+model1 <- plm(outmigrate_mean ~ v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel2, model = "within")
+
+# Modell 2: Quadratische Erweiterung mit LDI²
+model2 <- plm(outmigrate_mean ~ v2x_libdem_std + ldi_squared_std + gdp_per_capita_std, 
+              data = df_panel2, model = "within")
+
+# Modell 3: Regionen hinzufügen
+model3 <- plm(outmigrate_mean ~ v2x_libdem_std + ldi_squared_std + gdp_per_capita_std + as.factor(region), 
+              data = df_panel2, model = "within")
+
+# -----------------
+# 📌 Modelle mit Lags
+# -----------------
+
+# Modell 4: Lag der abhängigen Variablen (t-1)
+model4 <- plm(outmigrate_mean ~ outmigrate_mean_lag1 + v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel2, model = "within")
+
+# Modell 5: Lags der unabhängigen Variablen (t-1)
+model5 <- plm(outmigrate_mean ~ v2x_libdem_std_lag1 + gdp_per_capita_std_lag1, 
+              data = df_panel2, model = "within")
+
+# Modell 6: Mehrere Lags (t-1)
+model6 <- plm(outmigrate_mean ~ outmigrate_mean_lag1 + v2x_libdem_std_lag1 + gdp_per_capita_std_lag1, 
+              data = df_panel2, model = "within")
+
+# -----------------
+# 📌 AIC & Modellvergleich
+# -----------------
+
+# Funktion zur manuellen Berechnung des AIC für plm() Modelle
+AIC_plm <- function(model) {
+  RSS <- sum(resid(model)^2)  # Residual Sum of Squares
+  k <- length(coef(model))  # Anzahl der Parameter
+  n <- nobs(model)  # Anzahl der Beobachtungen
+  return(n * log(RSS/n) + 2 * k)
+}
+
+# Berechnung für alle plm-Modelle
+aic_values <- data.frame(
+  Modell = c("Model 1", "Model 2", "Model 3", "Model 4", "Model 5", "Model 6"),
+  AIC = c(AIC_plm(model1), AIC_plm(model2), AIC_plm(model3), AIC_plm(model4), AIC_plm(model5), AIC_plm(model6))
+)
+
+# -----------------
+# 📌 Ergebnisse ausgeben mit Stargazer (LaTeX oder Text)
+# -----------------
+
+stargazer(model1, model2, model3, model4, model5, model6, 
+          type = "latex", 
+          title = "Regressionsergebnisse: Auswanderung und Demokratie",
+          dep.var.labels = "Durchschnittliche Auswanderungsrate",
+          covariate.labels = c("LDI (Demokratie-Index)", "LDI² (Nicht-linearer Effekt)", 
+                               "BIP pro Kopf (standardisiert)", "Regionale Dummy-Variablen", 
+                               "Lagged Outmigration (t-1)", "Lagged LDI (t-1)", "Lagged BIP pro Kopf (t-1)"),
+          omit.stat = c("f", "ser"), digits = 2, 
+          column.sep.width = "2pt", font.size = "scriptsize",
+          out = "Regressionstabelle_Auswanderung.tex")
+
+# -----------------
+# 📌 AIC-Werte ausgeben
+# -----------------
+print(aic_values)
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: 
+#| label: Selber Code mit Inmigrations 
+# Pakete laden
+library(mgcv)
+library(parallel)
+library(data.table)
+library(dplyr)
+
+dfmerged_openalex_scopus_country <- dfmerged_openalex_scopus_country %>%
+  filter(!is.na(countrycode), !is.na(year))
+
+# 📌 Zusammenführen der Datensätze und Berechnung der neuen Variablen
+df3 <- dfmerged_openalex_scopus_country %>% 
+  left_join(filtered_V_dem %>% select(countrycode, year, v2x_libdem, v2cafres), 
+            by = c("countrycode", "year")) %>%
+  mutate(
+    # Berechnung der durchschnittlichen Einwanderungsrate statt Auswanderung
+    inmigrate_mean = rowMeans(select(., inmigrate_openalex, inmigrate_scopus), na.rm = TRUE),
+    
+    # Berechnung der Populationsvariablen
+    paddedpop_mean = rowMeans(select(., paddedpop_scopus, paddedpop_openalex), na.rm = TRUE),
+    paddedpop_relative = paddedpop_mean / population * 100000  # Forscheranteil an der Bevölkerung
+  ) %>%
+  filter(!is.na(countrycode), !is.na(year)) %>%
+  filter(year >= 1998 & year <= 2018) %>%
+  filter(!(countrycode == "TWN" & is.na(countryname))) %>%
+  drop_na(v2x_libdem, v2cafres)  # 36 Länder werden nicht miteinbezogen
+
+# 📌 Einteilung in Demokratie- und Forschungsfreiheitskategorien
+df3 <- df3 %>%
+  mutate(
+    democracy_category = ntile(v2x_libdem, 3),  # Einteilung in 3 gleich große Gruppen
+    Forschungsfreiheit_category = ntile(v2cafres, 3)
+  ) %>%
+  mutate(
+    democracy_category = case_when(
+      democracy_category == 1 ~ "Low",
+      democracy_category == 2 ~ "Medium",
+      democracy_category == 3 ~ "High"
+    ),
+    Forschungsfreiheit_category = case_when(
+      Forschungsfreiheit_category == 1 ~ "Low",
+      Forschungsfreiheit_category == 2 ~ "Medium",
+      Forschungsfreiheit_category == 3 ~ "High"
+    )
+  )
+
+# 📌 Panel-Daten vorbereiten
+df_panel3 <- df3 %>%
+  mutate(Researchergroup = cut(
+    paddedpop_mean,
+    breaks = quantile(paddedpop_mean, probs = seq(0, 1, by = 1/6), na.rm = TRUE),
+    include.lowest = TRUE,
+    labels = paste0("Q", 1:6)
+  )) %>%
+  mutate(
+    ldi_squared = v2x_libdem^2,  # Quadratischer Term des Demokratieindex
+    gdp_per_capita = as.numeric(gdp_per_capita),  # Sicherstellen, dass die Variable numerisch ist
+    paddedpop_mean = as.numeric(paddedpop_mean)  # Forscherdichte: Durchschnitt aus OpenAlex & Scopus
+  ) %>%
+  drop_na(v2x_libdem, gdp_per_capita, paddedpop_mean, Researchergroup)
+
+# 📌 Relevante Variablen auswählen
+df_panel3 <- df_panel3 %>%
+  select(countrycode, year, v2x_libdem, gdp_per_capita, inmigrate_mean, paddedpop_mean, 
+         region, ldi_squared, Researchergroup, v2cafres)  
+
+# 📌 Standardisierung von Variablen
+df_panel3 <- df_panel3 %>%
+  mutate(
+    v2x_libdem_std = scale(v2x_libdem, center = TRUE, scale = TRUE)[,1],  
+    ldi_squared_std = v2x_libdem_std^2,  # Quadratische Variable für nicht-lineare Effekte
+    gdp_per_capita_std = scale(gdp_per_capita, center = TRUE, scale = TRUE)[,1],
+    v2cafres = scale(v2cafres, center = TRUE, scale = TRUE)[,1]
+  )
+
+# 📌 Panel-Daten formatieren
+df_panel3 <- pdata.frame(df_panel3, index = c("countrycode", "year"))
+
+# Sicherstellen, dass "year" numerisch ist
+df_panel3 <- df_panel3 %>%
+  mutate(year = as.numeric(as.character(year)))  # Falls year ein Faktor ist
+
+# 📌 Lagged Variablen erstellen (t-1)
+lags <- c(1)  # Nur t-1
+vars_to_lag <- c("inmigrate_mean", "v2x_libdem_std", "gdp_per_capita_std")  # Variablen zum Laggen
+
+for (var in vars_to_lag) {
+  for (lag in lags) {
+    df_panel3_previous <- df_panel3 %>%
+      select(countrycode, year, all_of(var)) %>%
+      mutate(year = year + lag)  # Jahr um 1 erhöhen (t-1)
+
+    # Mergen mit Original-Datensatz
+    df_panel3 <- df_panel3 %>%
+      left_join(df_panel3_previous, by = c("countrycode", "year"), suffix = c("", paste0("_lag", lag)))
+    
+    # Richtiges Umbenennen der Lagged-Variablen
+    new_col_name <- paste0(var, "_lag", lag)
+    df_panel3 <- df_panel3 %>%
+      rename(!!new_col_name := paste0(var, "_lag", lag))
+  }
+}
+
+# -----------------
+# 📌 Panel-Regressionen (Fixed Effects)
+# -----------------
+
+# Modell 1: Basis-Modell mit LDI & GDP pro Kopf
+model1 <- plm(inmigrate_mean ~ v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel3, model = "within")
+
+# Modell 2: Quadratische Erweiterung mit LDI²
+model2 <- plm(inmigrate_mean ~ v2x_libdem_std + ldi_squared_std + gdp_per_capita_std, 
+              data = df_panel3, model = "within")
+
+# Modell 3: Regionen hinzufügen
+model3 <- plm(inmigrate_mean ~ v2x_libdem_std + ldi_squared_std + gdp_per_capita_std + as.factor(region), 
+              data = df_panel3, model = "within")
+
+# -----------------
+# 📌 Modelle mit Lags
+# -----------------
+
+# Modell 4: Lag der abhängigen Variablen (t-1)
+model4 <- plm(inmigrate_mean ~ inmigrate_mean_lag1 + v2x_libdem_std + gdp_per_capita_std, 
+              data = df_panel3, model = "within")
+
+# Modell 5: Lags der unabhängigen Variablen (t-1)
+model5 <- plm(inmigrate_mean ~ v2x_libdem_std_lag1 + gdp_per_capita_std_lag1, 
+              data = df_panel3, model = "within")
+
+# Modell 6: Mehrere Lags (t-1)
+model6 <- plm(inmigrate_mean ~ inmigrate_mean_lag1 + v2x_libdem_std_lag1 + gdp_per_capita_std_lag1, 
+              data = df_panel3, model = "within")
+
+# -----------------
+# 📌 AIC-Werte berechnen
+# -----------------
+AIC_plm <- function(model) {
+  RSS <- sum(resid(model)^2)
+  k <- length(coef(model))
+  n <- nobs(model)
+  return(n * log(RSS/n) + 2 * k)
+}
+
+aic_values <- data.frame(
+  Modell = c("Model 1", "Model 2", "Model 3", "Model 4", "Model 5", "Model 6"),
+  AIC = sapply(list(model1, model2, model3, model4, model5, model6), AIC_plm)
+)
+
+# Ergebnis ausgeben
+print(aic_values)
+
+# -----------------
+# 📌 Ergebnisse ausgeben mit Stargazer (LaTeX oder Text)
+# -----------------
+
+stargazer(model1, model2, model3, model4, model5, model6, 
+          type = "latex", 
+          title = "Regressionsergebnisse: Einwanderung und Demokratie",
+          dep.var.labels = "Durchschnittliche Einwanderungsrate",
+          covariate.labels = c("LDI (Demokratie-Index)", "LDI² (Nicht-linearer Effekt)", 
+                               "BIP pro Kopf (standardisiert)", "Regionale Dummy-Variablen", 
+                               "Lagged Inmigration (t-1)", "Lagged LDI (t-1)", "Lagged BIP pro Kopf (t-1)"),
+          omit.stat = c("f", "ser"), digits = 2, 
+          column.sep.width = "2pt", font.size = "scriptsize",
+          out = "Regressionstabelle_Einwanderung.tex")
+
+
+# -----------------
+# 📌 AIC-Werte ausgeben
+# -----------------
+```
+
+## Bilaterale Daten
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+# Pakete laden
+require(mgcv)
+require(parallel)
+require(data.table)
+require(dplyr)
+
+# 📌 1: Datensätze kombinieren (OpenAlex & Scopus)
+combined_flows2 <- bind_rows(
+  openalex_flows %>% mutate(source = "OpenAlex"),
+  scopus_flows %>% mutate(source = "Scopus")
+) 
+
+# 📌 2: Migration aggregieren
+df4 <- combined_flows2 %>%
+  filter(!is.na(iso3codefrom), !is.na(iso3codeto), !is.na(year)) %>%
+  filter(year >= 1998 & year <= 2018) %>%
+  group_by(iso3codeto, iso3codefrom, year) %>%
+  summarise(
+    n_migrations = sum(n_migrations, na.rm = TRUE),  
+    .groups = "drop"
+  ) 
+
+# 📌 3: Demokratie-Daten bereinigen
+filtered_V_dem_unique <- filtered_V_dem %>%
+  group_by(countrycode, year) %>%
+  summarise(v2x_libdem = mean(v2x_libdem, na.rm = TRUE), .groups = "drop") %>%
+  rename(iso3code = countrycode)  
+
+# 📌 4: Demokratieindex hinzufügen (von & nach)
+df4 <- df4 %>%
+  left_join(filtered_V_dem_unique %>% rename(v2x_libdem_to = v2x_libdem),
+            by = c("iso3codeto" = "iso3code", "year")) %>%
+  left_join(filtered_V_dem_unique %>% rename(v2x_libdem_from = v2x_libdem),
+            by = c("iso3codefrom" = "iso3code", "year"))
+
+# 📌 5: Wirtschaftsvariablen, Bevölkerung & `population` hinzufügen
+df4 <- df4 %>%
+  left_join(
+    combined_flows2 %>%
+      select(iso3codeto, year, gdp_per_capitato, incomelevelto, paddedpopto, populationto) %>%
+      distinct(iso3codeto, year, .keep_all = TRUE),  
+    by = c("iso3codeto", "year")
+  ) %>%
+  left_join(
+    combined_flows2 %>%
+      select(iso3codefrom, year, gdp_per_capitafrom, incomelevelfrom, paddedpopfrom, populationfrom) %>%
+      distinct(iso3codefrom, year, .keep_all = TRUE),  
+    by = c("iso3codefrom", "year")
+  ) %>%
+  drop_na(n_migrations, v2x_libdem_from, v2x_libdem_to, 
+          gdp_per_capitato, gdp_per_capitafrom, 
+          paddedpopfrom, paddedpopto, populationfrom, populationto)
+
+# 📌 6: Demokratiekategorien erstellen
+df4 <- df4 %>%
+  mutate(
+    democracy_category_from = ntile(v2x_libdem_from, 3),
+    democracy_category_to = ntile(v2x_libdem_to, 3),
+    democracy_category_from = case_when(
+      democracy_category_from == 1 ~ "Low",
+      democracy_category_from == 2 ~ "Medium",
+      democracy_category_from == 3 ~ "High"
+    ),
+    democracy_category_to = case_when(
+      democracy_category_to == 1 ~ "Low",
+      democracy_category_to == 2 ~ "Medium",
+      democracy_category_to == 3 ~ "High"
+    )
+  )
+
+# 📌 7: Durchschnittsbildung pro Jahr (auch für `populationfrom` und `populationto`)
+df4 <- df4 %>%
+  group_by(iso3codeto, iso3codefrom, year) %>%
+  summarise(
+    n_migrations = mean(n_migrations, na.rm = TRUE),  
+    v2x_libdem_from = mean(v2x_libdem_from, na.rm = TRUE),  
+    v2x_libdem_to = mean(v2x_libdem_to, na.rm = TRUE),  
+    gdp_per_capitato = mean(gdp_per_capitato, na.rm = TRUE),  
+    gdp_per_capitafrom = mean(gdp_per_capitafrom, na.rm = TRUE),  
+    paddedpopfrom = mean(paddedpopfrom, na.rm = TRUE),
+    paddedpopto = mean(paddedpopto, na.rm = TRUE),
+    populationfrom = mean(populationfrom, na.rm = TRUE),
+    populationto = mean(populationto, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+# 📦 Pakete laden
+library(plm)
+library(dplyr)
+library(stargazer)
+
+
+# 📌 Dummy für viele Wissenschaftler (oberes 25%-Quantil)
+df4 <- df4 %>%
+  mutate(
+    high_researchers_from = ifelse(paddedpopfrom > quantile(paddedpopfrom, 0.75, na.rm = TRUE), 1, 0),
+    high_researchers_to = ifelse(paddedpopto > quantile(paddedpopto, 0.75, na.rm = TRUE), 1, 0)
+  )
+
+# 📌 Panel-ID erstellen
+df4 <- df4 %>%
+  mutate(panel_id = paste(iso3codefrom, iso3codeto, sep = "-"))
+
+# 📌 Standardisierung der Variablen
+df4 <- df4 %>%
+  mutate(
+    v2x_libdem_from_std = scale(v2x_libdem_from, center = TRUE, scale = TRUE)[,1],
+    v2x_libdem_to_std = scale(v2x_libdem_to, center = TRUE, scale = TRUE)[,1],
+    gdp_per_capitato_std = scale(gdp_per_capitato, center = TRUE, scale = TRUE)[,1],
+    gdp_per_capitafrom_std = scale(gdp_per_capitafrom, center = TRUE, scale = TRUE)[,1]
+  )
+
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(forcats)
+library(scales)
+
+# --- Bilaterale Flows vorbereiten ---
+bilateral_sums <- df4 %>%
+  filter(!is.na(iso3codefrom), !is.na(iso3codeto), !is.na(n_migrations)) %>%
+  mutate(
+    pair = if_else(iso3codefrom < iso3codeto,
+                   paste(iso3codefrom, iso3codeto, sep = "↔"),
+                   paste(iso3codeto, iso3codefrom, sep = "↔")),
+    direction = paste(iso3codefrom, "→", iso3codeto)
+  ) %>%
+  group_by(pair) %>%
+  summarise(
+    total_flows = sum(n_migrations, na.rm = TRUE),
+    flow_from_to = sum(n_migrations[iso3codefrom < iso3codeto], na.rm = TRUE),
+    flow_to_from = sum(n_migrations[iso3codefrom > iso3codeto], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    net_flow = flow_to_from - flow_from_to,
+    net_flow_pct = 100 * net_flow / total_flows
+  )
+
+# --- Top 30 auswählen und sortieren ---
+top_flows <- bilateral_sums %>%
+  arrange(desc(total_flows)) %>%
+  slice(1:30) %>%
+  mutate(pair = fct_reorder(pair, -total_flows))
+
+# --- Dynamische Y-Skalierung für Prozent
+ymin_pct <- floor(min(top_flows$net_flow_pct) / 10) * 10
+ymax_pct <- ceiling(max(top_flows$net_flow_pct) / 10) * 10
+zero_line_y <- (0 - ymin_pct) / (ymax_pct - ymin_pct) * max(top_flows$total_flows)
+
+# --- Plot
+ggplot(top_flows, aes(x = pair)) +
+  # Balken
+  geom_bar(
+    aes(y = total_flows),
+    stat = "identity",
+    fill = "#4682B4",
+    alpha = 0.8,
+    width = 0.7
+  ) +
+  # Kreise: Net Flow (%)
+  geom_point(
+    aes(y = (net_flow_pct - ymin_pct) / (ymax_pct - ymin_pct) * max(top_flows$total_flows)),
+    shape = 21,
+    fill = "white",
+    color = "black",
+    size = 3,
+    stroke = 0.7
+  ) +
+  # Linie bei 0%
+  geom_hline(
+    yintercept = zero_line_y,
+    linetype = "dashed",
+    color = "grey50",
+    linewidth = 0.4
+  ) +
+  # Achsen
+  scale_y_continuous(
+    name = NULL,
+    labels = scales::label_comma(big.mark = ".", decimal.mark = ","),
+    sec.axis = sec_axis(
+      ~ . / max(top_flows$total_flows) * (ymax_pct - ymin_pct) + ymin_pct,
+      name = NULL
+    )
+  ) +
+  labs(
+  x = NULL,
+  caption = "Top 30 Länderpaare nach bilateraler Migration (1998–2018)\nBalken = Gesamtflüsse, Kreise = Nettowanderung (%)"
+) + 
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 65, hjust = 1),
+    axis.title.y.left = element_text(margin = margin(r = 10)),
+    axis.title.y.right = element_text(margin = margin(l = 10)),
+    panel.grid.major.x = element_line(color = "grey", linewidth = 0.3),
+    panel.grid.major.y = element_line(color = "grey90", linewidth = 0.4),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),  # Rahmen um Plotbereich
+    plot.margin = margin(10, 20, 10, 20)# Etwas Luft außenrum
+  ) +
+  # 🔹 Custom Annotationen für Y-Achsen oben
+  annotate("text", x = 1, y = max(top_flows$total_flows) * 1.05, label = "Bilaterale Ströme", hjust = 0, size = 3.5) +
+  annotate("text", x = length(top_flows$pair), y = max(top_flows$total_flows) * 1.05, label = "%", hjust = 1, size = 3.5)
+
+
+```
+
+```{r}
+top_flows %>%
+  filter(net_flow_pct > 0) %>%
+  arrange(desc(net_flow_pct)) %>%
+  select(pair, net_flow_pct)
+
+```
+```{r}
+#| label: Netzwerkbasierte Effekte 
+library(dplyr)
+library(igraph)
+library(tidygraph)
+library(ggraph)
+library(scales)
+
+iso_to_de <- c(
+  "USA" = "USA",
+  "DEU" = "Deutschland",
+  "FRA" = "Frankreich",
+  "GBR" = "Großbritannien",
+  "CHN" = "China",
+  "JPN" = "Japan",
+  "ITA" = "Italien",
+  "ESP" = "Spanien",
+  "CAN" = "Kanada",
+  "AUS" = "Australien"
+)
+
+
+# --- 1. Top 10 Länder nach Gesamtmigrationsvolumen ---
+top_countries <- df4 %>%
+  filter(!is.na(iso3codefrom), !is.na(iso3codeto), !is.na(n_migrations)) %>%
+  select(iso3codefrom, iso3codeto, n_migrations) %>%
+  pivot_longer(cols = c(iso3codefrom, iso3codeto), names_to = "role", values_to = "country") %>%
+  group_by(country) %>%
+  summarise(total_migrations = sum(n_migrations, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(total_migrations)) %>%
+  slice_head(n = 10) %>%
+  pull(country)
+
+# --- 2. Kanten filtern für Netzwerk der Top 10 ---
+edges <- df4 %>%
+  filter(
+    iso3codefrom %in% top_countries,
+    iso3codeto %in% top_countries,
+    !is.na(n_migrations)
+  ) %>%
+  group_by(from = iso3codefrom, to = iso3codeto) %>%
+  summarise(weight = sum(n_migrations, na.rm = TRUE), .groups = "drop")
+
+# --- 3. Netzwerkobjekt ---
+g <- graph_from_data_frame(edges, directed = TRUE)
+
+# --- 4. tidygraph mit Metriken ---
+tg <- as_tbl_graph(g) %>%
+  mutate(
+    degree = centrality_degree(mode = "all"),
+    pagerank = centrality_pagerank(),
+    migration_balance = centrality_degree(mode = "in") - centrality_degree(mode = "out"),
+    name_de = iso_to_de[name])
+
+# --- 5. Visualisierung ---
+ggraph(tg, layout = "fr") +
+  geom_edge_link(
+    aes(width = weight, alpha = weight),
+    color = "steelblue"
+  ) +
+  scale_edge_width(range = c(0.3, 2), guide = "none") +
+  scale_edge_alpha(range = c(0.1, 0.9), guide = "none") +
+  geom_node_point(
+    aes(size = pagerank, color = migration_balance),
+    show.legend = FALSE
+  ) +
+  geom_node_text(
+    aes(label = name_de),
+    repel = TRUE,
+    size = 4,
+    fontface = "bold",
+    color = "black"
+  ) +
+  scale_size_continuous(name = "PageRank", range = c(3, 10)) +
+  scale_color_gradient2(
+    low = "red", mid = "grey90", high = "darkgreen", midpoint = 0,
+    name = "Migrations-Balance"
+  ) +
+  theme_void()
+
+  
+
+
+
+```
+
+
+
+
+```{r, fig.width=10, fig.height=10, dev = "png"}
+#| label: Migrationsströme von Wissenschaftlern (Top 5 Länder)
+#| echo: false
+#| include: false
+#| eval: false
+
+library(circlize)
+library(dplyr)
+library(RColorBrewer)
+
+# 📌 ISO3 → Deutschsprachiger Ländername
+country_names_de <- c(
+  "USA" = "USA",
+  "CHN" = "China",
+  "DEU" = "Deutschland",
+  "FRA" = "Frankreich",
+  "GBR" = "Großbritannien",
+  "JPN" = "Japan",
+  "CAN" = "Kanada",
+  "AUS" = "Australien",
+  "IND" = "Indien",
+  "ITA" = "Italien"
+)
+
+# 1️⃣ Aggregierte Migrationsmatrix
+migration_matrix <- df4 %>%
+  group_by(iso3codefrom, iso3codeto) %>%
+  summarise(value = sum(n_migrations, na.rm = TRUE), .groups = "drop") %>%
+  filter(value > 0)
+
+# 2️⃣ Top 10 Länder bestimmen (nach Gesamt-Migration)
+top_countries <- migration_matrix %>%
+  group_by(iso3codefrom) %>%
+  summarise(total_out = sum(value)) %>%
+  bind_rows(
+    migration_matrix %>%
+      group_by(iso3codeto) %>%
+      summarise(total_out = sum(value)) %>%
+      rename(iso3codefrom = iso3codeto)
+  ) %>%
+  group_by(iso3codefrom) %>%
+  summarise(total = sum(total_out)) %>%
+  arrange(desc(total)) %>%
+  slice(1:10) %>%
+  pull(iso3codefrom)
+
+# 3️⃣ Farbpalette – kräftig, unterscheidbar, professionell
+all_countries <- unique(c(migration_matrix$iso3codefrom, migration_matrix$iso3codeto))
+n <- length(all_countries)
+
+# Professionelle Farbpalette (verwende viele verschiedene Farben für Klarheit)
+set1_colors <- brewer.pal(9, "Set1")
+set3_colors <- brewer.pal(12, "Set3")
+qual_col_pals <- c(set1_colors, set3_colors)
+
+# Falls zu wenig Farben: erweitern mit colorRamp
+extra_colors <- colorRampPalette(qual_col_pals)(n)
+names(extra_colors) <- all_countries
+
+# Top 10 – noch kontrastreicher
+highlight_colors <- colorRampPalette(brewer.pal(8, "Dark2"))(length(top_countries))
+names(highlight_colors) <- top_countries
+
+# Zusammenführen
+grid_colors <- extra_colors
+grid_colors[names(highlight_colors)] <- highlight_colors
+
+# 4️⃣ Plot-Reset
+circos.clear()
+par(mar = c(1, 1, 1, 1))  # schmaler Rand
+
+# 5️⃣ Chord-Diagramm
+chordDiagram(
+  x = migration_matrix,
+  grid.col = grid_colors,
+  transparency = 0.35,  # etwas transparenter für Flussklarheit
+  annotationTrack = c("grid"),
+  directional = 1,
+  direction.type = c("arrows", "diffHeight"),
+  diffHeight = 0.05,
+  link.arr.type = "big.arrow",
+  annotationTrackHeight = c(0.03, 0.08)
+)
+
+# 6️⃣ Top-10-Länder beschriften (in Deutsch)
+circos.track(track.index = 1, panel.fun = function(x, y) {
+  sector <- get.cell.meta.data("sector.index")
+  xlim <- get.cell.meta.data("xlim")
+  ylim <- get.cell.meta.data("ylim")
+
+  if (sector %in% top_countries) {
+    label <- ifelse(sector %in% names(country_names_de), 
+                    country_names_de[sector], sector)
+    
+    circos.text(
+      x = mean(xlim),
+      y = ylim[1] + 0.1,
+      labels = label,
+      facing = "clockwise",
+      niceFacing = TRUE,
+      cex = 0.95,   # etwas größer als vorher
+      adj = c(0, 0.5),
+      font = 2      # fettgedruckt
+    )
+  }
+}, bg.border = NA)
+```
