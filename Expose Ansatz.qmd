@@ -1,0 +1,2495 @@
+---
+title: "Migration von Wissenschaftlern – Eine explorative Analyse"
+subtitle: "Exposé der Masterarbeit"
+authors: 
+  - name: "Josef Blum"
+    affiliations:
+      - ref: uf
+affiliations:
+   - id: uf 
+     name: "University of Freiburg" 
+date: last-modified
+date-format: long
+bibliography: "references_migration.bib"
+link-citations: true
+execute: 
+  freeze: true
+  cache: true
+highlight-style: espresso
+format: 
+  pdf: 
+    papersize: a4
+    toc: true 
+    toc-depth: 3 
+    theme:
+      light: journal
+      dark: darkly
+    colorlinks: true
+    engine: knitr
+    execute: 
+      echo: false
+      warning: false
+  html:
+    toc: true
+    toc-depth: 3
+    theme:
+      light: journal
+      dark: darkly
+    execute: 
+      echo: false 
+      warning: false
+      code-fold: True
+  docx: 
+    toc: true 
+    toc-depth: 3 
+    reference-doc: "word_style.docx"
+    echo: false
+    warning: false
+editor: visual
+---
+
+# Beispielgrafiken
+
+```{r}
+library(readr)
+```
+
+```{r}
+#| label: Daten hochladen 
+##iso3code, region_value, incomeLevel_id
+dfcountries <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_input/dfcountries.csv")
+#View(dfcountries)
+
+
+## Population pro Jahr 
+### countryiso3code, date, value 
+world_bank_popuplation_ffilled <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_input/world_bank_popuplation_ffilled.csv")
+#View(world_bank_popuplation_ffilled)
+
+
+### Comparion from 1997-2024 with Scopus, openalex and orcid (countrycode and countryname)
+### number_of_authors_ and share_of_mobile_authors_ with _scopus, _openalex and _orcid 
+X3way_comparison <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/3way_comparison.csv")
+#View(X3way_comparison)
+
+
+### countrycode, year, gdp_per_capita, population, netmig_openalex, net_scopus, region, incomelevel
+dfmerged_openalex_scopus_country <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/dfmerged_openalex_scopus_country.csv")
+#View(dfmerged_openalex_scopus_country)
+
+
+### Enriched openalex with Countrycode, netmigration, incomelevel, gdp_per_capita, region, incomelevel and population 
+# Country level yearly dataset on international emigration, immigration, net migration rates and other variables based on OpenAlex.
+openalex_data <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/openalex_2024_V1_scholarlymigration_country_enriched.csv")
+#View(openalex_2024_V1_scholarlymigration_country_enriched)
+
+# Country level yearly “fow” dataset on international emigration, immigration, net migration rates and other variables based on OpenAlex.
+openalex_flows <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/openalex_2024_V1_scholarlymigration_countryflows_enriched.csv")
+
+
+### Enriched scopus with Countrycode, netmigration, incomelevel, gdp_per_capita, region, incomelevel and population 
+# Country level yearly dataset on international emigration, immigration, net migration rates and other variables based on Scopus.
+scopus_data <- read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/scopus_2024_V1_scholarlymigration_country_enriched.csv")
+#View(scopus_2024_V1_scholarlymigration_country_enriched)
+
+# Country level yearly “fow” dataset on international emigration, immigration, net migration rates and other variables based on Scopus.
+scopus_flows <- 
+  read_csv("Global-flows-and-rates-of-international-migration-of-scholars-master/data_processed/scopus_2024_V1_scholarlymigration_countryflows_enriched.csv")
+
+
+```
+
+```{r}
+#| label: "V-dem Filter und Selektion"
+
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("readr", quietly = TRUE)) {
+  install.packages("readr")
+}
+
+library(dplyr)
+library(readr)
+
+
+# Laden des Datensatzes
+V_Dem_CY_Core_v14 <- read_csv("V-dem/V-Dem-CY-Core-v14.csv")
+
+# Filterung des Datensatzes auf die Jahre 1998 bis 2023 und Auswahl der gewünschten Variablen
+filtered_V_dem <- V_Dem_CY_Core_v14 |>
+  filter(year >= 1998 & year <= 2023) |>
+  select(country_name, country_text_id, year, v2x_libdem, v2x_polyarchy, v2x_corr, v2x_rule, v2x_freexp_altinf, v2x_civlib, v2cafres, v2cafexch, v2cainsaut, v2xca_academ) |>
+  rename(countrycode = country_text_id, countryname = country_name)
+
+# Anzeige einer Vorschau des gefilterten Datensatzes
+#View(filtered_V_dem)
+```
+
+```{r}
+#| label: "Scopus und Openalex Selektion"
+
+require(mgcv)
+require(parallel)
+require(data.table)
+
+scopus_data <- scopus_data %>%
+  filter(!is.na(countrycode), !is.na(year))
+
+openalex_data <- openalex_data %>%
+  filter(!is.na(countrycode), !is.na(year))
+
+
+  
+
+# Zusammenführen der beiden Datensätze:  scopus_2024_V1_scholarlymigration_country_enriched und Vdem
+merged_scopus <- scopus_data %>% 
+  left_join(filtered_V_dem %>% select(countrycode, year, v2x_libdem, v2x_polyarchy, v2x_corr, v2x_rule, v2x_freexp_altinf, v2x_civlib, v2cafres, v2cafexch, v2cainsaut, v2xca_academ), 
+            by = c("countrycode", "year")) %>%
+  filter(!is.na(countrycode), !is.na(year))
+
+#colSums(is.na(merged_scopus))
+
+# Zusammenführen der beiden Datensätze: openalex_2024_V1_scholarlymigration_country_enriched und Vdem
+merged_openalex <- openalex_data %>%
+  left_join(filtered_V_dem %>% select(countrycode, year, v2x_libdem, v2x_polyarchy, v2x_corr, v2x_rule, v2x_freexp_altinf, v2x_civlib, v2cafres, v2cafexch, v2cainsaut, v2xca_academ), 
+            by = c("countrycode", "year")) %>%
+  filter(!is.na(countrycode), !is.na(year))
+
+#colSums(is.na(merged_openalex))
+
+
+
+```
+
+### Wissenschaftler Weltkarte
+
+Dieses Schaubild zeigt, dass die Veteilung der Wissenschaftler auf globaler Ebene sehr stark sich auf China und den USA konzentriert, sowie auf europäischer Ebene. Wenn wir die Wissenschaftler pro 100.000 Einwohner betrachten konzentriert sich die durchschnittliche Anzahl eher auf die Skandinavischen Länder und die Schweiz
+
+::: panel-tabset
+### Weltkarte Regionen
+
+```{r}
+#| label: Weltkarte mit Regionen
+library(ggplot2)
+library(dplyr)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+
+# Weltkartendaten laden
+world_map <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Scopus-Daten mit der Weltkarte verbinden
+world_map <- world_map %>%
+  left_join(scopus_data, by = c("iso_a3_eh" = "countrycode"))  # Annahme: "countrycode" in scopus_data enthält ISO-3-Codes
+
+# Zuordnung der Regionen zu Farben
+region_colors <- c(
+  "Latin America & Caribbean" = "#87CEEB",  # SkyBlue
+  "South Asia" = "#FFA500",                # Orange
+  "Sub-Saharan Africa" = "#9370DB",        # Medium Purple
+  "Europe & Central Asia" = "#32CD32",     # Lime Green
+  "Middle East & North Africa" = "#FFD700", # Gold
+  "East Asia & Pacific" = "#00CED1",       # Dark Turquoise
+  "North America" = "#FF6347"              # Tomato
+)
+
+# Karte erstellen
+ggplot(data = world_map) +
+  geom_sf(aes(fill = region), color = NA) +  # Regionen farblich markieren
+  scale_fill_manual(values = region_colors, name = "Region") +  # Benutzerdefinierte Farben
+  labs(
+    title = "Weltkarte mit Regionen",
+    fill = "Region"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")  # Robinson-Projektion für die Karte
+
+```
+
+For the current 2025 fiscal year, low-income economies are defined as those with a GNI per capita, calculated using the World Bank Atlas method, of \$1,145 or less in 2023; lower middle-income economies are those with a GNI per capita between \$1,146 and \$4,515; upper middle-income economies are those with a GNI per capita between \$4,516 and \$14,005; high-income economies are those with more than a GNI per capita of \$14,005.
+
+```{r}
+#| label: Weltkarte mit Regionen Bevölkerung 
+library(ggplot2)
+library(dplyr)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+
+# Weltkartendaten laden
+world_map <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Scopus-Daten mit der Weltkarte verbinden
+world_map <- world_map %>%
+  left_join(scopus_data, by = c("iso_a3_eh" = "countrycode"))  # Annahme: "countrycode" in scopus_data enthält ISO-3-Codes
+ 
+
+# Population hinzufügen und skalieren
+world_map <- world_map %>%
+  mutate(population_scaled = log10(population))  # Log-Skalierung zur besseren Darstellung großer Zahlen
+
+# Karte erstellen
+ggplot(data = world_map) +
+  geom_sf(aes(fill = population_scaled), color = NA) +  # Population farblich darstellen
+  scale_fill_viridis_c(option = "viridis", name = "Population (log10)") +
+  labs(
+    title = "Weltkarte mit Population",
+    fill = "Population (log10)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")  # Robinson-Projektion für die Karte
+
+```
+
+### Kombinierte Wetlkarte von Wissenschaftlern
+
+```{r}
+#| label:  Kombinierte Wetlkarte von Wissenschaftlern mit dfmerged 
+
+# Bibliotheken laden
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(scales)
+
+# **1. Daten vorbereiten: Kombinierter Datensatz**
+combined_data <- dfmerged_openalex_scopus_country
+
+# Wissenschaftleranzahl pro Land (1998–2020)
+world_data <- combined_data %>%
+  filter(year >= 1998 & year <= 2020) %>%
+  group_by(countrycode) %>%
+  summarise(mean_scholars = mean((paddedpop_openalex + paddedpop_scopus) / 2, na.rm = TRUE)) %>%
+  filter(!is.na(mean_scholars) & mean_scholars > 0)
+
+# Wissenschaftler pro 100.000 Einwohner
+combined_scholars_filtered <- combined_data %>%
+  filter(year >= 1998 & year <= 2020) %>%
+  group_by(countrycode) %>%
+  summarise(
+    mean_scholars = mean((paddedpop_openalex + paddedpop_scopus) / 2, na.rm = TRUE),
+    mean_population = mean(population, na.rm = TRUE)
+  ) %>%
+  mutate(scholars_per_100k = (mean_scholars / mean_population) * 100000) %>%
+  filter(!is.na(scholars_per_100k) & scholars_per_100k > 0)
+
+# **2. Weltkarte laden und Daten verbinden**
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Für Wissenschaftler pro Land
+world_combined <- world %>%
+  left_join(world_data, by = c("iso_a3_eh" = "countrycode")) %>%
+  filter(name != "Antarctica")
+
+# Für Wissenschaftler pro 100.000 Einwohner
+world_per_100k_combined <- world %>%
+  left_join(combined_scholars_filtered, by = c("iso_a3_eh" = "countrycode")) %>%
+  filter(name != "Antarctica")
+
+# **3. Visualisierungen**
+# Wissenschaftler pro Land
+p1 <- ggplot(data = world_combined) +
+  geom_sf(aes(fill = mean_scholars), color = NA) +
+  scale_fill_gradientn(
+    colours = c("lightgrey", "lightblue", "lightgreen", "green", "orange", "coral", "red"),
+    values = scales::rescale(c(0, 50000, 75000, 100000, 200000, 500000, 1200000)),
+    name = "Wissenschaftler",
+    breaks = seq(100000, 1200000, by = 200000),
+    labels = paste0(seq(100, 1200, by = 200), "k"),
+    limits = c(0, 1200000)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Wissenschaftler pro Land",
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")
+
+# Wissenschaftler pro 100.000 Einwohner
+p2 <- ggplot(data = world_per_100k_combined) +
+  geom_sf(aes(fill = scholars_per_100k), color = NA) +
+  scale_fill_gradientn(
+    colours = c("lightgrey", "lightblue", "lightgreen", "green", "orange", "coral", "red"),
+    values = scales::rescale(c(0, 10, 50, 100, 200, 500, 1000)),
+    name = "Wissenschaftler",
+    breaks = seq(100, 1000, by = 200),
+    labels = paste0(seq(100, 1000, by = 200)),
+    limits = c(0, 1000)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Wissenschaftler pro 100.000 Einwohner",
+    fill = "Wissenschaftler"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")
+
+#| label:  Kombinierte Wetlkarte von Wissenschaftlern mit dfmerged 
+
+# Bibliotheken laden
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(scales)
+
+# **1. Daten vorbereiten: Kombinierter Datensatz**
+combined_data <- dfmerged_openalex_scopus_country
+
+# Wissenschaftleranzahl pro Land (1998–2020)
+world_data <- combined_data %>%
+  filter(year >= 1998 & year <= 2020) %>%
+  group_by(countrycode) %>%
+  summarise(mean_scholars = mean((paddedpop_openalex + paddedpop_scopus) / 2, na.rm = TRUE)) %>%
+  filter(!is.na(mean_scholars) & mean_scholars > 0)
+
+# Wissenschaftler pro 100.000 Einwohner
+combined_scholars_filtered <- combined_data %>%
+  filter(year >= 1998 & year <= 2020) %>%
+  group_by(countrycode) %>%
+  summarise(
+    mean_scholars = mean((paddedpop_openalex + paddedpop_scopus) / 2, na.rm = TRUE),
+    mean_population = mean(population, na.rm = TRUE)
+  ) %>%
+  mutate(scholars_per_100k = (mean_scholars / mean_population) * 100000) %>%
+  filter(!is.na(scholars_per_100k) & scholars_per_100k > 0)
+
+# **2. Weltkarte laden und Daten verbinden**
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Für Wissenschaftler pro Land
+world_combined <- world %>%
+  left_join(world_data, by = c("iso_a3_eh" = "countrycode")) %>%
+  filter(name != "Antarctica")
+
+# Für Wissenschaftler pro 100.000 Einwohner
+world_per_100k_combined <- world %>%
+  left_join(combined_scholars_filtered, by = c("iso_a3_eh" = "countrycode")) %>%
+  filter(name != "Antarctica")
+
+# **3. Visualisierungen**
+# Wissenschaftler pro Land
+p1 <- ggplot(data = world_combined) +
+  geom_sf(aes(fill = mean_scholars), color = NA) +
+  scale_fill_gradientn(
+    colours = c("lightgrey", "lightblue", "lightgreen", "green", "orange", "coral", "red"),
+    values = scales::rescale(c(0, 50000, 75000, 100000, 200000, 500000, 1200000)),
+    name = "Wissenschaftler",
+    breaks = seq(100000, 1200000, by = 200000),
+    labels = paste0(seq(100, 1200, by = 200), "k"),
+    limits = c(0, 1200000)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Wissenschaftler pro Land",
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")
+
+# Wissenschaftler pro 100.000 Einwohner
+p2 <- ggplot(data = world_per_100k_combined) +
+  geom_sf(aes(fill = scholars_per_100k), color = NA) +
+  scale_fill_gradientn(
+    colours = c("lightgrey", "lightblue", "lightgreen", "green", "orange", "coral", "red"),
+    values = scales::rescale(c(0, 10, 50, 100, 200, 500, 1000)),
+    name = "Wissenschaftler",
+    breaks = seq(100, 1000, by = 200),
+    labels = paste0(seq(100, 1000, by = 200)),
+    limits = c(0, 1000)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Wissenschaftler pro 100.000 Einwohner",
+    fill = "Wissenschaftler"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")
+
+# **4. Karten anzeigen**
+print(p1)
+print(p2)
+
+
+```
+:::
+
+### Researchergroups
+
+```{r}
+#| label: Forschergruppen1
+# Sicherstellen, dass die Variable numerisch ist
+openalex_data$padded_population_of_researchers <- as.numeric(openalex_data$padded_population_of_researchers)
+
+# Berechnung der Quantile und Erstellung der neuen Spalte 'Researchergroup'
+openalex_data$Researchergroup <- cut(
+  openalex_data$padded_population_of_researchers,
+  breaks = quantile(openalex_data$padded_population_of_researchers, probs = seq(0, 1, by = 1/7), na.rm = TRUE),
+  include.lowest = TRUE,
+  labels = paste0("Q", 1:7)
+)
+
+# Sicherstellen, dass die Variable numerisch ist
+scopus_data$padded_population_of_researchers <- as.numeric(scopus_data$padded_population_of_researchers)
+
+# Berechnung der Quantile und Erstellung der neuen Spalte 'Researchergroup'
+scopus_data$Researchergroup <- cut(
+  scopus_data$padded_population_of_researchers,
+  breaks = quantile(scopus_data$padded_population_of_researchers, probs = seq(0, 1, by = 1/7), na.rm = TRUE),
+  include.lowest = TRUE,
+  labels = paste0("Q", 1:7)
+)
+
+# Tabellarische Übersicht der Verteilung
+quantile_distribution <- table(openalex_data$Researchergroup)
+
+# Umwandeln in ein Dataframe für bessere Darstellung
+quantile_distribution_df <- as.data.frame(quantile_distribution)
+colnames(quantile_distribution_df) <- c("ResearcherGroup", "Count")
+
+#table(scopus_data$Researchergroup)
+
+
+
+```
+
+```{r}
+#| label: Weltkarte der dominanten Forschergruppe pro Land
+# Pakete laden
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+
+
+# Beide Datenbanken zusammenführen
+combined_data <- bind_rows(
+  openalex_data %>% mutate(source = "OpenAlex"),
+  scopus_data %>% mutate(source = "Scopus")
+)
+
+# Datenvorbereitung: Bestimme die häufigste Researchergroup pro Land
+combined_summary <- combined_data %>%
+  group_by(countrycode) %>%
+  summarize(
+    Dominant_Researchergroup = names(which.max(table(Researchergroup)))
+  )
+
+# Weltkarte-Daten laden
+world_map <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Daten zusammenführen
+world_map <- world_map %>%
+  left_join(combined_summary, by = c("iso_a3_eh" = "countrycode"))
+
+# Erstellen der Weltkarte
+ggplot(data = world_map) +
+  geom_sf(aes(fill = Dominant_Researchergroup), color = "white", size = 0.1) +
+  scale_fill_manual(
+    values = c(
+      "Q1" = "#FFFFB2", "Q2" = "#FED976", "Q3" = "#FEB24C", 
+      "Q4" = "#FD8D3C", "Q5" = "#FC4E2A", "Q6" = "#E31A1C", 
+      "Q7" = "#B10026"
+    ),
+    name = "Forschergruppe",
+    na.value = "grey80"
+  ) +
+  labs(
+    title = "Weltkarte der dominanten Forschergruppe",
+    caption = "Datenquelle: Scopus und OpenAlex"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")  # Robinson-Projektion für die Karte
+
+```
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+# ANOVA-Test zwischen Researchergroup und gdp_per_capita
+anova_result <- aov(gdp_per_capita ~ Researchergroup, data = scopus_data)
+summary(anova_result)
+
+```
+
+# Verteilung der Nettomigrationsrate in den Researchergroups
+
+Die Grafik zeigt die Verteilung der Nettomigrationsrate in den verschiedenen Researchergroups, wobei nur Werte zwischen -0.25 und 0.25 berücksichtigt wurden. Die Beobachtungen in den einzelnen Quantilen sind gleich groß. Es fällt auf, dass die Streuung der Nettomigrationsrate in Q1 am größten ist, während sie in höheren Gruppen (z.B. Q6 und Q7) deutlich geringer und stabiler ist. Der Median nahe 0 für alle Gruppen zeigt, dass die Nettomigrationsrate im Durchschnitt kaum von null abweicht.
+
+Die Nettomigrationsrate gibt an, wie viele Wissenschaftler insgesamt in ein Land eingewandert sind, abzüglich derjenigen, die das Land verlassen haben. Dieses Ergebnis wird ins Verhältnis zur Gesamtzahl der Wissenschaftler im Land gesetzt.
+
+```{r}
+#| label: Verteilung der Nettomigrationsrate in den Researchergroups
+# Erforderliche Pakete laden
+library(ggplot2)
+library(dplyr)
+
+
+
+# Beide Datenbanken zusammenführen
+combined_data <- bind_rows(
+  openalex_data %>% mutate(source = "OpenAlex"),
+  scopus_data %>% mutate(source = "Scopus")
+)
+
+# Sicherstellen, dass die Nettomigrationsrate numerisch ist
+combined_data$netmigrationrate <- as.numeric(combined_data$netmigrationrate)
+
+# Filtern: Begrenzung der Nettomigrationsrate auf sinnvolle Werte
+filtered_data <- combined_data %>%
+  filter(netmigrationrate >= -0.125 & netmigrationrate <= 0.125)
+
+# Boxplot der Nettomigrationsrate ohne Aggregation (keine Mittelwerte)
+ggplot(filtered_data, aes(x = Researchergroup, y = netmigrationrate)) +
+  geom_boxplot(fill = "steelblue", alpha = 0.7) + # Punkte für einzelne Werte hinzufügen
+  labs(
+    title = "Verteilung der Nettomigrationsrate in den Researchergroups",
+    x = "Researchergroup",
+    y = "Nettomigrationsrate",
+    caption = "Quelle: Scopus und OpenAlex"
+  ) +
+  theme_minimal()
+
+# ANOVA-Test
+anova_result <- aov(netmigrationrate ~ Researchergroup, data = scopus_data)
+#summary(anova_result)
+
+# TukeyHSD Post-hoc-Test (bei Signifikanz)
+tukey_result <- TukeyHSD(anova_result)
+#print(tukey_result)
+
+```
+
+Die negative Korrelation legt nahe, dass Länder in höheren Researchergroups (z. B. Q6 und Q7) tendenziell eine niedrigere Nettomigrationsrate haben. \[-0.34\]
+
+```{r}
+#| label: Verteilung der Einkommensgruppen in den Researchergroups
+library(dplyr)
+library(ggplot2)
+
+# Beide Datenbanken zusammenführen
+combined_data <- bind_rows(
+  openalex_data %>% mutate(source = "OpenAlex"),
+  scopus_data %>% mutate(source = "Scopus")
+)
+# Daten filtern: nur Werte zwischen -0.05 und 0.1 und ohne INX
+filtered_data <- combined_data %>%
+  filter(netmigrationrate >= -0.05 & 
+         netmigrationrate <= 0.1 & 
+         incomelevel != "INX")
+
+# Einkommensgruppen in der gewünschten Reihenfolge festlegen
+filtered_data$incomelevel <- factor(filtered_data$incomelevel, levels = c("LIC", "LMC", "UMC", "HIC"))
+
+# Berechnung der Verteilung der Einkommensgruppen in den Researchergroups
+proportion_data <- filtered_data %>%
+  group_by(Researchergroup, incomelevel) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(Researchergroup) %>%
+  mutate(total_count = sum(count),
+         proportion = count / total_count)
+
+# Balkendiagramm: Verteilung der Einkommensgruppen in den Researchergroups
+ggplot(proportion_data, aes(x = Researchergroup, y = proportion, fill = incomelevel)) +
+  geom_bar(stat = "identity", position = "stack", color = "black") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "Verteilung der Einkommensgruppen in den Researchergroups",
+    x = "Researchergroup",
+    y = "Proportion",
+    fill = "Einkommensgruppe",
+    caption = "Quelle: Scopus und OpenAlex"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
+  )
+
+
+```
+
+Die negative Korrelation legt nahe, dass Länder in höheren Researchergroups (z. B. Q6 und Q7) tendenziell eine niedrigere Nettomigrationsrate haben. \[-0.34\]. Das Diagramm legt nahe, dass Länder mit höherem Einkommen in den unteren Quantilen tendenziell mehr Wissenschaftler netto gewinnen, während Länder mit niedrigerem Einkommen (LMC und LIC) stabilere oder sogar negative Nettomigrationsraten aufweisen. Allerdings ist die beobachtung von LIC und Q6 nur ein einzelnes land und zwar Ethipien. DIes zeigt die schwäche dieser Analyse. In höheren Quantilen nähern sich die Unterschiede zwischen den Einkommensgruppen an, was auf eine gleichmäßigere Migration hinweist. ---\> aus dieser Analse lernen wir, dass die kombination mit einkommensgruppen schwierigkeiten hervorbringt.
+
+```{r}
+#| label: Gewichtete Nettomigrationsrate nach Wissenschaftler-Quantilen
+library(dplyr)
+library(ggplot2)
+
+# Beide Datenbanken zusammenführen
+combined_data <- bind_rows(
+  openalex_data %>% mutate(source = "OpenAlex"),
+  scopus_data %>% mutate(source = "Scopus")
+)
+
+# Daten filtern: nur Werte zwischen -0.05 und 0.1 und ohne INX
+filtered_data <- combined_data %>%
+  filter(netmigrationrate >= -0.05 & 
+         netmigrationrate <= 0.1 & 
+         incomelevel != "INX")
+
+# Einkommensgruppen in der gewünschten Reihenfolge festlegen
+filtered_data$incomelevel <- factor(filtered_data$incomelevel, levels = c("LIC", "LMC", "UMC", "HIC"))
+
+# Aggregation der Daten: Mittelwert pro Land und Einkommensgruppe
+aggregated_data <- filtered_data %>%
+  group_by(countrycode, Researchergroup, incomelevel) %>%
+  summarise(
+    avg_netmigrationrate = mean(netmigrationrate, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Berechnung der Verteilung der Einkommensgruppen in den Researchergroups
+proportion_data <- aggregated_data %>%
+  group_by(Researchergroup, incomelevel) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(Researchergroup) %>%
+  mutate(total_count = sum(count),
+         proportion = count / total_count)
+
+# Berechnung der gewichteten Mittelwerte und Fehlerbalken für jede Gruppe
+mean_data <- aggregated_data %>%
+  group_by(Researchergroup, incomelevel) %>%
+  summarise(
+    mean_rate = mean(avg_netmigrationrate, na.rm = TRUE),
+    sd_rate = sd(avg_netmigrationrate, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Hinzufügen der Proportionen zu den Mittelwertdaten
+mean_data <- mean_data %>%
+  left_join(proportion_data, by = c("Researchergroup", "incomelevel")) %>%
+  mutate(weighted_mean_rate = mean_rate * proportion)
+
+# Balkendiagramm der gewichteten Mittelwerte 
+ggplot(mean_data, aes(x = Researchergroup, y = weighted_mean_rate, fill = incomelevel)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), color = "black") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "Gewichtete Nettomigrationsrate nach Wissenschaftler-Quantilen",
+    x = "Quantile von Wissenschaftlern",
+    y = "Durchschnittliche Nettomigrationsrate",
+    fill = "Einkommen",
+    caption = "Quelle: Scopus und OpenAlex"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
+  )
+
+```
+
+### Auswanderungen Weltkarte
+
+::: panel-tabset
+### Scopus
+
+```{r}
+#| label: Auswanderung Weltkarte Scopus
+# Notwendige Bibliotheken installieren (falls noch nicht installiert)
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(sf)) install.packages("sf")
+if(!require(rnaturalearth)) install.packages("rnaturalearth")
+if(!require(rnaturalearthdata)) install.packages("rnaturalearthdata")
+if(!require(viridis)) install.packages("viridis")
+
+# Bibliotheken laden
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(viridis)
+
+# Erstellen eines temporären Environments
+temp_env <- new.env()
+
+# Daten für die Jahre 1998 bis 2018 filtern und die mittlere Anzahl der Wissenschaftler pro Land berechnen
+temp_env$scopus_scholars_filtered <- scopus_data %>%
+  filter(year >= 1998 & year <= 2018) %>%
+  group_by(countrycode) %>%
+  summarise(mean_outmigrations = mean(number_of_outmigrations, na.rm = TRUE))
+
+# Überprüfen, ob das Land existiert und eine Population von Wissenschaftlern hat
+temp_env$scopus_scholars_filtered <- temp_env$scopus_scholars_filtered %>%
+  filter(!is.na(mean_outmigrations) & mean_outmigrations > 0)
+
+# Weltkarte als sf-Objekt laden
+temp_env$world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Verwende "iso_a3" für Ländercodes in der Weltkarte und "countrycode" in den Scopus-Daten
+temp_env$world_data <- temp_env$world %>%
+  left_join(temp_env$scopus_scholars_filtered, by = c("iso_a3_eh" = "countrycode")) %>%
+  filter(name != "Antarctica")  # Entferne die Antarktis aus der Karte
+
+# Erstellen der Weltkarte mit angepasster Farbskala und Legende
+ggplot(data = temp_env$world_data) +
+  geom_sf(aes(fill = mean_outmigrations), color = NA) +
+  scale_fill_gradientn(
+    colours = c("lightgrey","lightblue","yellow", "orange","coral","red"),  
+    values = scales::rescale(c(0, 1250, 2500, 5000, 10000, 20000)), 
+    name = "Auswanderungen", 
+    breaks = seq(5000, 20000, by = 5000),
+    limits = c(0, 20000)
+    )+
+  theme_minimal() +
+  labs(
+    title = "Auswanderungen von Wissenschaftlern pro Land",
+    subtitle = "Durchschnittliche Auswanderungen von 1998 - 2018",
+    caption = "Quelle: Scopus",
+    fill = "Wissenschaftler"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    legend.position = "left",
+    legend.direction = "vertical",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin") 
+
+```
+
+```{r}
+
+temp_env$scopus_scholars_filtered <- scopus_data %>%
+  filter(year >= 1998 & year <= 2017) %>%
+  group_by(countrycode) %>%
+  summarise(mean_outmigrations = mean(number_of_outmigrations, na.rm = TRUE)) %>%
+  filter(!is.na(mean_outmigrations) & mean_outmigrations > 0) %>%
+  arrange(desc(mean_outmigrations)) %>%  # Sortierung nach mittlerer Anzahl der Wissenschaftler
+  slice_head(n = 20)  # Auswahl der Top 20 Länder
+
+# Tabelle anzeigen
+#print(temp_env$scopus_scholars_filtered)
+```
+
+### Openalex
+
+```{r}
+#| label: Auswanderung Weltkarte Openalex
+# Notwendige Bibliotheken installieren (falls noch nicht installiert)
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(sf)) install.packages("sf")
+if(!require(rnaturalearth)) install.packages("rnaturalearth")
+if(!require(rnaturalearthdata)) install.packages("rnaturalearthdata")
+if(!require(viridis)) install.packages("viridis")
+
+# Bibliotheken laden
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(viridis)
+
+# Erstellen eines temporären Environments
+temp_env <- new.env()
+
+# Daten für die Jahre 2013 bis 2017 filtern und die mittlere Anzahl der Wissenschaftler pro Land berechnen
+temp_env$scopus_scholars_filtered <- openalex_data %>%
+  filter(year >= 1998 & year <= 2018) %>%
+  group_by(countrycode) %>%
+  summarise(mean_outmigrations = mean(number_of_outmigrations, na.rm = TRUE))
+
+# Überprüfen, ob das Land existiert und eine Population von Wissenschaftlern hat
+temp_env$scopus_scholars_filtered <- temp_env$scopus_scholars_filtered %>%
+  filter(!is.na(mean_outmigrations) & mean_outmigrations > 0)
+
+# Weltkarte als sf-Objekt laden
+temp_env$world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Verwende "iso_a3" für Ländercodes in der Weltkarte und "countrycode" in den Scopus-Daten
+temp_env$world_data <- temp_env$world %>%
+  left_join(temp_env$scopus_scholars_filtered, by = c("iso_a3_eh" = "countrycode")) %>%
+  filter(name != "Antarctica")  # Entferne die Antarktis aus der Karte
+
+# Erstellen der Weltkarte mit angepasster Farbskala und Legende
+ggplot(data = temp_env$world_data) +
+  geom_sf(aes(fill = mean_outmigrations), color = NA) +
+  scale_fill_gradientn(
+    colours = c("lightgrey","lightblue","yellow", "orange","coral","red"),  
+    values = scales::rescale(c(0, 2500, 5000, 10000, 20000, 40000)), 
+    name = "Auswanderungen", 
+    breaks = seq(10000, 40000, by = 10000),
+    limits = c(0, 40000) 
+    )+
+  theme_minimal() +
+  labs(
+    title = "Auswanderungen von Wissenschaftlern pro Land",
+    subtitle = "Durchschnittliche Auswanderungen von 1998 - 2018",
+    caption = "Quelle: Openalex",
+    fill = "Auswanderungen"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    legend.position = "left",
+    legend.direction = "vertical",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin") 
+
+
+```
+:::
+
+### Regionale Netto Migration
+
+-   Europa verzeichnet ab 2010 erhöhte Auswanderungen, wobei bis 2020 mehr Einwanderungen zu dem selben Saldo führen wie zuvor
+-   Südasien und Lateinamerika/ Karibik zeigen dauerhaft sinkende Netto Migration (Bei Openalex hat Lateinamerika eher eine positive Netto Migration)
+-   Nordamerika zeigt 2 Spitzen mit über 2000 mehr Wissenschaftlern im Jahr (Openalex weist das Gegenteil auf)
+-   Sub Sahara hat ein sehr konstantes Level um die null Netto migration (ähnlich bei Openalex)
+-   Mittlerer Osten und Nordafrika haben dauerhaft eine leicht positive Netto Migration (ähnlich bei Openalex)
+-   Ostasien und Pazifik haben eine stäkere Netto Migration mit dem Rekord um 2015 (ähnlicher Verlauf, aber höhere Netto Migration bei Openalex)
+
+::: panel-tabset
+### Scopus
+
+```{r}
+#| label: Rückkehrmuster Scopus 
+
+temp_env <- new.env()
+
+# Zuordnung der Regionen zu Farben
+region_colors <- c(
+  "Latin America & Caribbean" = "#87CEEB",  # SkyBlue
+  "South Asia" = "#FFA500",                # Orange
+  "Sub-Saharan Africa" = "#9370DB",        # Medium Purple
+  "Europe & Central Asia" = "#32CD32",     # Lime Green
+  "Middle East & North Africa" = "#FFD700", # Gold
+  "East Asia & Pacific" = "#00CED1",       # Dark Turquoise
+  "North America" = "#FF6347"              # Tomato
+)
+
+
+# Länder identifizieren, bei denen die Netto-Migration positiv geworden ist
+temp_env$countries_with_return_patterns <- merged_scopus %>%
+  group_by(countrycode, year) %>%
+  summarize(netmigration = sum(netmigration, na.rm = TRUE)) %>%
+  arrange(countrycode, year) %>%
+  group_by(countrycode) %>%
+  filter(any(netmigration > 0))  # Nur Länder mit positiver Netto-Migration
+
+
+# Regionale Rückkehrmuster analysieren
+temp_env$regional_return_patterns <- merged_scopus %>%
+  group_by(region, year) %>%
+  summarize(netmigration = sum(netmigration, na.rm = TRUE)) %>%
+  ggplot(aes(x = year, y = netmigration, color = region)) +
+  scale_color_manual(values = region_colors) +
+  geom_line() +
+  labs(title = "Net Migration over Time by Region", x = "Year", y = "Net Migration") +
+  theme_minimal()
+
+print(temp_env$regional_return_patterns)
+
+```
+
+### Openalex
+
+```{r}
+#| label: Rückkehrmuster Openalex
+
+temp_env <- new.env()
+
+# Zuordnung der Regionen zu Farben
+region_colors <- c(
+  "Latin America & Caribbean" = "#87CEEB",  # SkyBlue
+  "South Asia" = "#FFA500",                # Orange
+  "Sub-Saharan Africa" = "#9370DB",        # Medium Purple
+  "Europe & Central Asia" = "#32CD32",     # Lime Green
+  "Middle East & North Africa" = "#FFD700", # Gold
+  "East Asia & Pacific" = "#00CED1",       # Dark Turquoise
+  "North America" = "#FF6347"              # Tomato
+)
+
+
+# Länder identifizieren, bei denen die Netto-Migration positiv geworden ist
+temp_env$regional_return_patterns <- merged_openalex %>%
+  group_by(countrycode, year) %>%
+  summarize(netmigration = sum(netmigration, na.rm = TRUE)) %>%
+  arrange(countrycode, year) %>%
+  group_by(countrycode) %>%
+  filter(any(netmigration > 0))  # Nur Länder mit positiver Netto-Migration
+
+
+# Regionale Rückkehrmuster analysieren
+temp_env$regional_return_patterns <- merged_openalex %>%
+  group_by(region, year) %>%
+  summarize(netmigration = sum(netmigration, na.rm = TRUE)) %>%
+  ggplot(aes(x = year, y = netmigration, color = region)) +
+  scale_color_manual(values = region_colors) +
+  geom_line() +
+  labs(title = "Net Migration over Time by Region", x = "Year", y = "Net Migration") +
+  theme_minimal()
+
+print(temp_env$regional_return_patterns)
+
+```
+:::
+
+### Migration von Wissenschaftlern
+
+OpenAlex weist fast die Hälfe mehr an Migrationen von Wissenschaftlern auf im Vergleich zu Scopus
+
+::: panel-tabset
+### Scopus
+
+```{r}
+#| Label: Migration von Wissenschaftlern jährliche Migrationstrends 
+library(ggplot2)
+library(dplyr)
+
+plot_migrations_over_time <- function(scopus_flows, title) {
+  yearly_migrations <- scopus_flows %>%
+    group_by(year) %>%
+    summarise(total_migrations = sum(n_migrations, na.rm = TRUE))
+  
+  ggplot(yearly_migrations, aes(x = year, y = total_migrations)) +
+    geom_line(color = "steelblue", size = 1) +
+    labs(title = title, x = "Jahr", y = "Migrationen") +
+    theme_minimal()
+}
+
+plot_migrations_over_time(scopus_flows, "Jährliche Migrationstrends - Scopus")
+
+
+```
+
+### Openalex
+
+```{r}
+#| label: jährliche Migrationstrends
+library(ggplot2)
+yearly_migrations <- aggregate(n_migrations ~ year, data = openalex_flows, sum)
+
+plot_migrations_over_time(openalex_flows, "Jährliche Migrationstrends - OpenAlex")
+
+```
+:::
+
+### Regionale Unterschiede von Migration
+
+::: panel-tabset
+### Heatmap Scopus
+
+```{r}
+#| label: Heatmap Scopus 
+# Daten für Heatmap vorbereiten
+
+temp_env <- new.env()
+
+temp_env$heatmap_scopus <- scopus_data %>%
+  group_by(region, year) %>%
+  summarise(total_migration = sum(number_of_outmigrations, na.rm = TRUE))
+
+# Heatmap erstellen
+ggplot(temp_env$heatmap_scopus, aes(x = year, y = region, fill = total_migration)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  labs(title = "Wissenschaftler-Abwanderungen (Scopus)", x = "Jahr", y = "Region") +
+  theme_minimal()
+
+```
+
+### Heatmap Openalex
+
+```{r}
+#| label: Heatmap Openalex
+
+temp_env <- new.env()
+
+temp_env$heatmap_openalex <- openalex_data %>%
+  group_by(region, year) %>%
+  summarise(total_migration = sum(number_of_outmigrations, na.rm = TRUE))
+
+# Heatmap erstellen
+ggplot(temp_env$heatmap_openalex, aes(x = year, y = region, fill = total_migration)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  labs(title = "Wissenschaftler-Abwanderungen (Openalex)", x = "Jahr", y = "Region") +
+  theme_minimal()
+
+```
+
+### Auswanderungen pro Region
+
+```{r}
+#| label: Auswanderungen pro Region
+
+# Sicherstellen, dass die notwendigen Pakete installiert sind
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+
+library(ggplot2)
+library(dplyr)
+
+temp_env <- new.env()
+
+# Definition der Regionen
+regions <- c("Latin America & Caribbean", "South Asia", "Sub-Saharan Africa", 
+             "Europe & Central Asia", "Middle East & North Africa", 
+             "East Asia & Pacific", "North America")
+
+# Für den Scopus-Datensatz
+temp_env$Outmigrations_scopus <- merged_scopus %>%
+  filter(region %in% regions) %>%
+  group_by(year, region) %>%
+  summarise(number_of_outmigrations = sum(number_of_outmigrations, na.rm = TRUE)) %>%
+  ungroup()
+
+# Für den OpenAlex-Datensatz
+temp_env$Outmigrations_openalex <- merged_openalex %>%
+  filter(region %in% regions) %>%
+  group_by(year, region) %>%
+  summarise(number_of_outmigrations = sum(number_of_outmigrations, na.rm = TRUE)) %>%
+  ungroup()
+
+# Bestimmen des minimalen und maximalen Y-Wertes für die Y-Achse
+temp_env$y_limits <- range(c(temp_env$Outmigrations_scopus$number_of_outmigrations, temp_env$Outmigrations_openalex$number_of_outmigrations))
+
+# Zuordnung der Regionen zu Farben
+region_colors <- c(
+  "Latin America & Caribbean" = "blue", 
+  "South Asia" = "orange", 
+  "Sub-Saharan Africa" = "purple", 
+  "Europe & Central Asia" = "green", 
+  "Middle East & North Africa" = "yellow", 
+  "East Asia & Pacific" = "cyan", 
+  "North America" = "red"
+)
+
+
+# Zusammenführen der beiden Datensätze
+temp_env$combined_data <- rbind(
+  temp_env$Outmigrations_scopus %>% mutate(dataset = "Scopus"),
+  temp_env$Outmigrations_openalex %>% mutate(dataset = "OpenAlex")
+)
+
+# Erstellen des kombinierten Plots mit verschiedenen Linienarten
+ggplot(temp_env$combined_data, aes(x = year, y = number_of_outmigrations, color = region, linetype = dataset)) +
+  geom_line() +
+  scale_color_manual(values = region_colors) +
+  scale_linetype_manual(values = c("Scopus" = "dashed", "OpenAlex" = "solid")) +
+  labs(title = "Outmigrations for Different Regions", 
+       x = "Year", y = "Outmigrations", color = "Region", linetype = "Dataset") +
+  ylim(temp_env$y_limits) +  # Gemeinsame Y-Achse
+  theme_minimal()
+
+
+
+# Zusammenführen der beiden Datensätze auf Jahr und Region
+temp_env$merged_data <- merge(temp_env$Outmigrations_scopus, temp_env$Outmigrations_openalex, by = c("year", "region"), suffixes = c("_scopus", "_openalex"))
+
+# Berechnung des Mean Absolute Error (MAE)
+temp_env$mae <- mean(abs(temp_env$merged_data$number_of_outmigrations_scopus - temp_env$merged_data$number_of_outmigrations_openalex))
+print(temp_env$mae)
+cat("Mean Absolute Error (MAE) der Outmigrations zwischen Scopus und OpenAlex:", temp_env$mae, "\n")
+
+
+# Berechnung des Standard Errors (SE) für jede Region
+temp_env$se_by_region <- temp_env$merged_data %>%
+  group_by(region) %>%
+  summarise(
+    SE = sqrt(mean((number_of_outmigrations_scopus - number_of_outmigrations_openalex)^2))
+  )
+#print(temp_env$se_by_region)
+
+library(ggplot2)
+library(scales)
+library(RColorBrewer)
+
+# Professionellere Farbpalette aus RColorBrewer
+region_colors <- brewer.pal(n = length(unique(temp_env$combined_data$region)), name = "Dark2")
+
+ggplot(temp_env$combined_data, aes(x = year, y = number_of_outmigrations, color = region, linetype = dataset)) +
+  geom_line(size = 1.2, alpha = 0.8) +  # Dickere Linien mit Transparenz für bessere Sichtbarkeit
+  geom_point(size = 2, alpha = 0.8) +  # Punkte für bessere Lesbarkeit
+  scale_color_manual(values = region_colors) +  # Kräftigere Farben mit Dark2
+  scale_linetype_manual(values = c("Scopus" = "dashed", "OpenAlex" = "solid")) +
+  scale_y_continuous(labels = scales::comma) +  # Y-Achse mit Tausender-Trennung
+  labs(
+    title = "Entwicklung der Wissenschaftler-Auswanderung nach Regionen",
+    subtitle = "Vergleich zwischen Scopus und OpenAlex",
+    x = "Jahr",
+    y = "Anzahl der Auswanderungen",
+    color = "Region",
+    linetype = "Datenquelle"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    axis.text.x = element_text(size = 10, angle = 45, hjust = 1),  # X-Achsenwerte drehen für bessere Lesbarkeit
+    legend.position = "bottom",  # Legende nach unten für mehr Platz
+    legend.text = element_text(size = 10),
+    legend.title = element_text(face = "bold")
+  )
+
+
+
+```
+
+### Pro Bevölkerung
+
+```{r}
+#|label: Auswanderungen pro Kopf
+
+temp_env <- new.env()
+
+# Berechnung der Outmigrationen pro Kopf für Scopus
+temp_env$outmigrations_per_capita_scopus <- merged_scopus %>%
+  filter(region %in% regions) %>%
+  group_by(year, region) %>%
+  summarise(outmigrations_per_capita = sum(number_of_outmigrations, na.rm = TRUE) / sum(population, na.rm = TRUE)*100000) %>%
+  ungroup()
+
+# Berechnung der Outmigrationen pro Kopf für OpenAlex
+temp_env$outmigrations_per_capita_openalex <- merged_openalex %>%
+  filter(region %in% regions) %>%
+  group_by(year, region) %>%
+  summarise(outmigrations_per_capita = sum(number_of_outmigrations, na.rm = TRUE) / sum(population, na.rm = TRUE)* 100000) %>%
+  ungroup()
+
+# Zusammenführen der beiden Datensätze
+temp_env$combined_per_capita_data <- rbind(
+  temp_env$outmigrations_per_capita_scopus %>% mutate(dataset = "Scopus"),
+  temp_env$outmigrations_per_capita_openalex %>% mutate(dataset = "OpenAlex")
+)
+
+# Zuordnung der Regionen zu Farben
+region_colors <- c(
+  "Latin America & Caribbean" = "blue", 
+  "South Asia" = "orange", 
+  "Sub-Saharan Africa" = "purple", 
+  "Europe & Central Asia" = "green", 
+  "Middle East & North Africa" = "yellow", 
+  "East Asia & Pacific" = "cyan", 
+  "North America" = "red"
+)
+
+# Plot mit Outmigrationen pro Kopf
+ggplot(temp_env$combined_per_capita_data, aes(x = year, y = outmigrations_per_capita, color = region, linetype = dataset)) +
+  geom_line() +
+  scale_color_manual(values = region_colors) +
+  scale_linetype_manual(values = c("Scopus" = "dashed", "OpenAlex" = "solid")) +
+  labs(title = "Outmigrations per 100k inhabitants for Different Regions", 
+       x = "Year", y = "Outmigrations", color = "Region", linetype = "Dataset") +
+  theme_minimal()
+
+```
+:::
+
+### Regionale Unterschiede bei den Datensätzen
+
+::: panel-tabset
+### Net Migration
+
+```{r}
+#| label: "net migration from 1998 to 2020 for regions"
+#| figure: "scopus blau und openalex rot"
+# Notwendige Pakete laden
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+
+temp_env <- new.env()
+
+# Aggregation der Netto-Migration für Scopus und OpenAlex pro Region und Jahr
+scopus_region_data <- scopus_data %>%
+  group_by(region, year) %>%
+  summarise(netmigration = sum(netmigration, na.rm = TRUE))
+
+openalex_region_data <- openalex_data %>%
+  group_by(region, year) %>%
+  summarise(netmigration = sum(netmigration, na.rm = TRUE))
+
+# Liste der zu plottenden Regionen
+temp_env$regions <- c("Latin America & Caribbean", "South Asia", "Sub-Saharan Africa", 
+                      "Europe & Central Asia", "Middle East & North Africa", 
+                      "East Asia & Pacific", "North America")
+
+# Leere Liste initialisieren, um die Plots zu speichern
+temp_env$plots <- list()
+
+# Schleife durch jede Region und erstelle einen kombinierten Plot
+for (region in temp_env$regions) {
+  # Daten für die aktuelle Region filtern
+  scopus_region_data <- scopus_data %>%
+    filter(region == !!region)
+  
+  openalex_region_data <- openalex_data %>%
+    filter(region == !!region)
+  
+  # Bestimme das erste und letzte Jahr für die x-Achsenbeschriftung
+  start_year <- min(c(min(scopus_region_data$year, na.rm = TRUE), min(openalex_region_data$year, na.rm = TRUE)))
+  end_year <- max(c(max(scopus_region_data$year, na.rm = TRUE), max(openalex_region_data$year, na.rm = TRUE)))
+  
+  # Erstellen des kombinierten Plots für die aktuelle Region
+  temp_env$p <- ggplot() +
+    geom_smooth(data = scopus_region_data, aes(x = year, y = netmigration), 
+                method = "loess", se = FALSE, color = "blue", size = 1) + # Scopus Trendlinie in Blau
+    geom_smooth(data = openalex_region_data, aes(x = year, y = netmigration), 
+                method = "loess", se = FALSE, color = "red", size = 1) + # OpenAlex Trendlinie in Rot
+    labs(title = paste("Net Migration -", region)) +
+    scale_x_continuous(breaks = seq(start_year, end_year, by = 10)) + 
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 10),  
+      axis.text.x = element_text(size = 8),  
+      axis.ticks.x = element_line(), 
+      axis.title.x = element_blank(),  
+      axis.title.y = element_blank(),  
+      legend.position = "none",        
+      panel.grid = element_blank(),    
+      plot.margin = margin(5, 5, 5, 5) 
+    )
+  
+  temp_env$plots[[region]] <- temp_env$p
+}
+
+# Anordnen aller Plots in einem Rasterlayout mit größerer Größe (2x4 Rasterlayout)
+grid.arrange(grobs = temp_env$plots, ncol = 2, nrow = 4)
+
+
+# Erklärung der Farbskala unter den Grafiken
+cat("Scopus = Blau, Openalex = rot")
+
+```
+
+### Researchers
+
+```{r}
+#| label: "padded Population of Researchers from 1998 to 2020 for regions"
+#| figure: "scopus blau und openalex rot"
+
+# Notwendige Pakete laden
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+
+temp_env <- new.env()
+
+# Liste der zu plottenden Regionen
+temp_env$regions <- c("Latin America & Caribbean", "South Asia", "Sub-Saharan Africa", 
+                      "Europe & Central Asia", "Middle East & North Africa", 
+                      "East Asia & Pacific", "North America")
+
+# Leere Liste initialisieren, um die Plots zu speichern
+temp_env$plots <- list()
+
+# Schleife durch jede Region und erstelle einen kombinierten Plot
+for (region in temp_env$regions) {
+  # Daten für die aktuelle Region filtern
+  scopus_region_data <- scopus_data %>%
+    filter(region == !!region)
+  
+  openalex_region_data <- openalex_data %>%
+    filter(region == !!region)
+  
+  # Bestimme das erste und letzte Jahr für die x-Achsenbeschriftung
+  start_year <- min(c(min(scopus_region_data$year, na.rm = TRUE), min(openalex_region_data$year, na.rm = TRUE)))
+  end_year <- max(c(max(scopus_region_data$year, na.rm = TRUE), max(openalex_region_data$year, na.rm = TRUE)))
+  
+  # Erstellen des kombinierten Plots für die aktuelle Region
+  temp_env$p <- ggplot() +
+    geom_smooth(data = scopus_region_data, aes(x = year, y = padded_population_of_researchers, color = "Scopus"), 
+                method = "loess", se = FALSE, size = 1) + # Scopus Trendlinie in Blau
+    geom_smooth(data = openalex_region_data, aes(x = year, y = padded_population_of_researchers, color = "OpenAlex"), 
+                method = "loess", se = FALSE, size = 1) + # OpenAlex Trendlinie in Rot
+    scale_color_manual(name = "Source", 
+                       values = c("Scopus" = "blue", "OpenAlex" = "red"), 
+                       labels = c("Scopus", "OpenAlex")) +
+    scale_x_continuous(breaks = seq(start_year, end_year, by = 10)) +
+    labs(title = paste("Researchers -", region)) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 10),  
+      axis.text.x = element_text(size = 8),  
+      axis.ticks.x = element_line(),  # Zeige Achsenmarkierungen
+      axis.title.x = element_blank(),  # Entfernen des Labels der x-Achse
+      axis.title.y = element_blank(),  # Entfernen des Labels der y-Achse
+      legend.position = "none",        # Position der Legende unten
+      panel.grid = element_blank(),    # Entfernen der Gitternetzlinien
+      plot.margin = margin(5, 5, 5, 5) # Anpassen der Ränder
+    )
+  
+  temp_env$plots[[region]] <- temp_env$p
+}
+
+# Anordnen aller Plots in einem Rasterlayout mit größerer Größe (2x4 Rasterlayout)
+grid.arrange(grobs = temp_env$plots, ncol = 2, nrow = 4)
+
+```
+:::
+
+### Top-Herkunfts- und Zielländer:
+
+::: panel-tabset
+### Scopus Herkunftsländer
+
+```{r}
+#| label: Herkunftsländer Scopus
+library(dplyr)
+library(scales)
+top_countries_from <- scopus_flows %>% 
+  group_by(countrynamefrom) %>%
+  summarise(total_migrations = sum(n_migrations)) %>%
+  arrange(desc(total_migrations)) %>%
+  head(10)
+
+top_countries_to <- scopus_flows %>%
+  group_by(countrynameto) %>%
+  summarise(total_migrations = sum(n_migrations)) %>%
+  arrange(desc(total_migrations)) %>%
+  head(10)
+
+plot_top_countries <- function(data, variable, title) {
+  top_countries <- data %>%
+    group_by({{variable}}) %>%
+    summarise(total_migrations = sum(n_migrations, na.rm = TRUE)) %>%
+    arrange(desc(total_migrations)) %>%
+    head(10)
+  
+  ggplot(top_countries, aes(x = reorder({{variable}}, -total_migrations), y = total_migrations)) +
+    geom_bar(stat = "identity", fill = "steelblue") +
+    coord_flip() +
+    labs(title = title, x = "Land", y = "Migrationen") +
+    scale_y_continuous(labels = label_number(big.mark = ".", decimal.mark = ",")) +
+    theme_minimal()
+}
+
+plot_top_countries(scopus_flows, countrynamefrom, "Top Herkunftsländer - Scopus")
+
+```
+
+### Scopus Zielländer
+
+```{r}
+#| label: Top Zielländer Scopus 
+
+plot_top_countries(scopus_flows, countrynameto, "Top Zielländer - Scopus")
+```
+
+### Openalex Herkunftsländer
+
+```{r}
+#| label: Top Herkunftsländer Openalex
+library(dplyr)
+top_countries_from <- openalex_flows %>% 
+  group_by(countrynamefrom) %>%
+  summarise(total_migrations = sum(n_migrations)) %>%
+  arrange(desc(total_migrations)) %>%
+  head(10)
+
+top_countries_to <- openalex_flows %>%
+  group_by(countrynameto) %>%
+  summarise(total_migrations = sum(n_migrations)) %>%
+  arrange(desc(total_migrations)) %>%
+  head(10)
+
+plot_top_countries(openalex_flows, countrynamefrom, "Top Herkunftsländer - OpenAlex")
+```
+
+### Openalex Zieländer
+
+```{r}
+#| label: Top Zielländer Openalex
+
+plot_top_countries(openalex_flows, countrynameto, "Top Zielländer - OpenAlex")
+```
+:::
+
+### Regionale Ströme
+
+```{r}
+#| label: Regionale Ströme1 
+library(dplyr)
+library(ggplot2)
+
+# Summarize data for Scopus
+region_flows_scopus <- scopus_flows %>%
+  group_by(regionfrom, regionto) %>%
+  summarise(total_migrations = sum(n_migrations, na.rm = TRUE)) %>%
+  mutate(source = "Scopus")
+
+# Summarize data for OpenAlex
+region_flows_openalex <- openalex_flows %>%
+  group_by(regionfrom, regionto) %>%
+  summarise(total_migrations = sum(n_migrations, na.rm = TRUE)) %>%
+  mutate(source = "OpenAlex")
+
+# Combine both datasets
+combined_flows <- bind_rows(region_flows_scopus, region_flows_openalex)
+
+# Arrange by total migrations (descending)
+combined_flows <- combined_flows %>%
+  arrange(desc(total_migrations)) %>%
+  group_by(source) %>%
+  slice_head(n = 10)  # Limit to top 10 for each source
+
+# Create a combined plot
+ggplot(combined_flows, aes(x = reorder(paste(regionfrom, "->", regionto), -total_migrations), 
+                           y = total_migrations, fill = source)) +
+  geom_bar(stat = "identity", position = "identity", alpha = 1) +
+  coord_flip() +
+  ylim(0, 600000) +
+  labs(title = "Vergleich der Migrationsströme",
+       x = "Regionenfluss",
+       y = "Migrationen") +
+  scale_y_continuous(labels = label_number(big.mark = ".", decimal.mark = ",")) +
+  scale_fill_manual(values = c("Scopus" = "steelblue", "OpenAlex" = "red")) +
+  theme_minimal()
+
+```
+
+### Auswanderungsrate vs. Liberale Demokratie
+
+Die Grafik, bestätigt die Hypothese, das Länder mit geringerer demokratischer Freiheit eine höhere Abwanderungsrate von Wissenschaftlern haben
+
+::: panel-tabset
+### Scopus
+
+```{r}
+#| label: Outmigrationrate vs. Liberal Democracy (scopus)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(viridis)
+
+# Verkleinern des Datensatzes auf die angegebenen Variablen
+temp_env$libdem_scopus <- merged_scopus %>%
+  select(countrycode, countryname, year, population, 
+         padded_population_of_researchers, number_of_outmigrations, incomelevel, v2x_libdem)
+
+# Berechnen der Auswanderungen relativ zur Anzahl der Forscher pro Bevölkerung für jedes Land
+temp_env$libdem_scopus <- temp_env$libdem_scopus %>%
+  mutate(outmigrations_per_researcher = number_of_outmigrations / padded_population_of_researchers * 100)
+
+# Berechnen des Mittelwerts der Forscher pro Kopf und der Anzahl der Abwanderungen für jedes Land
+temp_env$Outmigrations_scholars <- temp_env$libdem_scopus %>%
+  group_by(countrycode, countryname, incomelevel) %>%
+  filter(incomelevel != "INX") %>%
+  summarize(
+    MeanOutmigrationsPerResearcher = mean(outmigrations_per_researcher, na.rm = TRUE),
+    MeanLiberalDemocracyIndex = mean(v2x_libdem, na.rm = TRUE),
+    .groups = 'drop'
+  ) 
+
+# Filter für den Demokratie-Index im Bereich von 0 bis 1
+temp_env$Outmigrations_scholars <- temp_env$Outmigrations_scholars %>%
+  filter(MeanLiberalDemocracyIndex >= 0 & MeanLiberalDemocracyIndex <= 1)
+
+# Setze die Reihenfolge für incomelevel fest
+temp_env$Outmigrations_scholars$incomelevel <- factor(
+  temp_env$Outmigrations_scholars$incomelevel,
+  levels = c("HIC", "UMC", "LMC", "LIC")
+)
+
+# Erstellen der Grafik mit ggplot2
+temp_env$q <- ggplot(temp_env$Outmigrations_scholars, 
+                     aes(x = MeanLiberalDemocracyIndex, y = MeanOutmigrationsPerResearcher, color = incomelevel, text = countryname)) +
+  geom_point(size = 4, alpha = 0.7, aes(group = countryname)) +
+  scale_color_viridis_d(option = "D", direction = -1) +  
+
+  # Linien für jedes Einkommensniveau hinzufügen
+  geom_smooth(aes(group = incomelevel, color = incomelevel), 
+              method = "lm", se = FALSE, linetype = "dashed", size = 0.5, inherit.aes = TRUE) +
+
+  labs(
+    title = "Outmigrationrate vs. Liberal Democracy",
+    subtitle = "Relationship between Liberal Democracy and Outmigration per Researcher",
+    caption = "Quelle: Scopus",
+    x = "Liberal Democracy Index",
+    y = "Mean Outmigrations per 100 Researchers"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 8),
+    axis.title = element_text(size = 14)
+  )
+
+
+# Umwandeln der ggplot2-Grafik in eine interaktive plotly-Grafik
+#temp_env$interactive_plot <- ggplotly(temp_env$q, tooltip = "text")
+
+# Zeige die interaktive plotly-Grafik an
+#temp_env$interactive_plot
+
+
+```
+
+```{r, eval = TRUE}
+#| label: Outmigrationrate vs. Liberal Democracy (scopus) pdf
+print(temp_env$q)
+```
+
+### OpenAlex
+
+```{r}
+#| label: Outmigrationrate vs. Liberal Democracy (Openalex)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(viridis)
+
+# Verkleinern des Datensatzes auf die angegebenen Variablen
+temp_env$libdem_openalex <- merged_openalex %>%
+  select(countrycode, countryname, year, population, 
+         padded_population_of_researchers, number_of_outmigrations, incomelevel, v2x_libdem)
+
+# Berechnen der Auswanderungen relativ zur Anzahl der Forscher pro Bevölkerung für jedes Land
+temp_env$libdem_openalex <- temp_env$libdem_openalex %>%
+  mutate(outmigrations_per_researcher = number_of_outmigrations / padded_population_of_researchers * 100)
+
+# Berechnen des Mittelwerts der Forscher pro Kopf und der Anzahl der Abwanderungen für jedes Land
+temp_env$Outmigrations_scholars <- temp_env$libdem_openalex %>%
+  group_by(countrycode, countryname, incomelevel) %>%
+  filter(incomelevel != "INX") %>%
+  summarize(
+    MeanOutmigrationsPerResearcher = mean(outmigrations_per_researcher, na.rm = TRUE),
+    MeanLiberalDemocracyIndex = mean(v2x_libdem, na.rm = TRUE),
+    .groups = 'drop'
+  ) 
+
+# Filter für den Demokratie-Index im Bereich von 0 bis 1
+temp_env$Outmigrations_scholars <- temp_env$Outmigrations_scholars %>%
+  filter(MeanLiberalDemocracyIndex >= 0 & MeanLiberalDemocracyIndex <= 1)
+
+# Setze die Reihenfolge für incomelevel fest
+temp_env$Outmigrations_scholars$incomelevel <- factor(
+  temp_env$Outmigrations_scholars$incomelevel,
+  levels = c("HIC", "UMC", "LMC", "LIC")
+)
+
+# Erstellen der Grafik mit ggplot2
+temp_env$q <- ggplot(temp_env$Outmigrations_scholars, 
+                     aes(x = MeanLiberalDemocracyIndex, y = MeanOutmigrationsPerResearcher, color = incomelevel, text = countryname)) +
+  geom_point(size = 4, alpha = 0.7, aes(group = countryname)) +
+  scale_color_viridis_d(option = "D", direction = -1) +  
+
+  # Linien für jedes Einkommensniveau hinzufügen
+  geom_smooth(aes(group = incomelevel, color = incomelevel), 
+              method = "lm", se = FALSE, linetype = "dashed", size = 0.5, inherit.aes = TRUE) +
+
+  labs(
+    title = "Outmigrationrate vs. Liberal Democracy",
+    subtitle = "Relationship between Liberal Democracy and Outmigration per Researcher",
+    caption = "Quelle: Scopus",
+    x = "Liberal Democracy Index",
+    y = "Mean Outmigrations per 100 Researchers"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 8),
+    axis.title = element_text(size = 14)
+  )
+
+# Umwandeln der ggplot2-Grafik in eine interaktive plotly-Grafik
+#temp_env$interactive_plot <- ggplotly(temp_env$q, tooltip = "text")
+
+# Zeige die interaktive plotly-Grafik an
+#temp_env$interactive_plot
+```
+
+```{r, eval = TRUE}
+#| label: Outmigrationrate vs. Liberal Democracy (Openalex) pdf 
+print(temp_env$q)
+```
+:::
+
+### Verhältnisses der Forscher zur Gesamtbevölkerung mit Freedom of Research
+
+-   Freiheit für Wissenschaftler steigt mit Anzahl an Wissenschaftlern
+-   Bildet allerdings keine zeitliche Schwankungen ab
+
+::: panel-tabset
+### Scopus
+
+```{r}
+#| label: "Verhältnisses der Forscher zur Gesamtbevölkerung für jedes Land (Scopus)"
+#| figure: "Durchschnitt von v2cafres, v2cafexch, und v2cainsaut"
+
+# Notwendige Bibliotheken laden
+library(dplyr)
+library(ggplot2) 
+library(plotly)
+library(viridis) # Hinzufügen der viridis-Bibliothek
+
+temp_env <- new.env()
+
+# Verkleinern des Datensatzes auf die angegebenen Variablen
+temp_env$cafres_scopus <- merged_scopus %>%
+  select(countrycode, countryname, year, population, 
+         padded_population_of_researchers, netmigration, number_of_outmigrations, number_of_inmigrations, v2xca_academ)
+
+# Berechnen des Verhältnisses der Forscher zur Gesamtbevölkerung für jedes Land
+temp_env$cafres_scopus <- temp_env$cafres_scopus %>%
+  mutate(researchers_per_capita = padded_population_of_researchers / population * 100000)
+
+# Berechnen des Verhältnisses der Auswanderungen zur Gesamtbevölkerung für jedes Land
+temp_env$cafres_scopus <- temp_env$cafres_scopus %>%
+  mutate(number_of_outmigrations = number_of_outmigrations / population * 100000)
+
+# Berechnen des Mittelwerts der Forscher pro Kopf und der Anzahl der Abwanderungen für jedes Land
+temp_env$Outmigrations_scholars <- temp_env$cafres_scopus %>%
+  group_by(countrycode, countryname) %>%
+  summarize(
+    MeanResearchersPerCapita = mean(researchers_per_capita, na.rm = TRUE),
+    MeanOutmigrations = mean(number_of_outmigrations, na.rm = TRUE),
+    MeanAcademicFreedomIndex = mean(v2xca_academ, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# Filter für den akademischen Freiheitsindex im Bereich von 0 bis 1
+temp_env$Outmigrations_scholars <- temp_env$Outmigrations_scholars %>%
+  filter(MeanAcademicFreedomIndex >= 0 & MeanAcademicFreedomIndex <= 1)
+
+# Erstellen der Grafik mit ggplot2
+temp_env$q <- ggplot(temp_env$Outmigrations_scholars, aes(x = MeanResearchersPerCapita, y = MeanOutmigrations, color = MeanAcademicFreedomIndex, text = countryname)) +
+  geom_point(size = 4, alpha = 0.7, aes(group = countrycode)) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed") +
+  scale_color_viridis_c(option = "D", limits = c(0, 1)) + 
+  labs(
+    title = "Researchers and Outmigrations with Academic Freedom",
+    subtitle = "Mean of freedom to research and teach, academic exchange, institutional autonomy, campus integrity,...",
+    caption = "Quelle: Scopus",
+    x = "Mean Researchers per 100k",
+    y = "Mean Outmigrations per 100k",
+    color = "Academic Freedom Index"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 8),
+    axis.title = element_text(size = 14),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 10)
+  )
+
+# Umwandeln der ggplot2-Grafik in eine interaktive plotly-Grafik
+temp_env$mean_indices_om_scopus <- ggplotly(temp_env$q, tooltip = "text")
+
+# Grafik anzeigen
+#print(temp_env$q)
+
+# Umwandeln der ggplot2-Grafik in eine interaktive plotly-Grafik
+#temp_env$interactive_plot <- ggplotly(temp_env$q, tooltip = "text")
+
+# Zeige die interaktive plotly-Grafik an
+#temp_env$interactive_plot
+
+
+#- freedom to research and teach 
+#- freedom of academic exchange and dissemination
+#- institutional autonomy
+#- campus integrity 
+#- freedom of academic and cultural expression 
+
+
+```
+
+```{r}
+#| label: Outmigrationrate vs. Akademische Freiheit (scopus)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(viridis)
+
+# Verkleinern des Datensatzes auf die angegebenen Variablen
+temp_env$academ_scopus <- merged_scopus %>%
+  select(countrycode, countryname, year, population, 
+         padded_population_of_researchers, number_of_outmigrations, incomelevel, v2xca_academ)
+
+# Berechnen der Auswanderungen relativ zur Anzahl der Forscher pro Bevölkerung für jedes Land
+temp_env$academ_scopus <- temp_env$academ_scopus %>%
+  mutate(outmigrations_per_researcher = number_of_outmigrations / padded_population_of_researchers * 100)
+
+# Berechnen des Mittelwerts der Forscher pro Kopf und der Anzahl der Abwanderungen für jedes Land
+temp_env$Outmigrations_scholars <- temp_env$academ_scopus %>%
+  group_by(countrycode, countryname, incomelevel) %>%
+  filter(incomelevel != "INX") %>%
+  summarize(
+    MeanOutmigrationsPerResearcher = mean(outmigrations_per_researcher, na.rm = TRUE),
+    MeanAcademicFreedomIndex = mean(v2xca_academ, na.rm = TRUE),  # Angepasster Indikator
+    .groups = 'drop'
+  ) 
+
+# Filter für den Demokratie-Index im Bereich von 0 bis 1
+temp_env$Outmigrations_scholars <- temp_env$Outmigrations_scholars %>%
+  filter(MeanAcademicFreedomIndex >= 0 & MeanAcademicFreedomIndex <= 1)
+
+# Setze die Reihenfolge für incomelevel fest
+temp_env$Outmigrations_scholars$incomelevel <- factor(
+  temp_env$Outmigrations_scholars$incomelevel,
+  levels = c("HIC", "UMC", "LMC", "LIC")
+)
+
+# Erstellen der Grafik mit ggplot2
+temp_env$q <- ggplot(temp_env$Outmigrations_scholars, 
+                     aes(x = MeanAcademicFreedomIndex, y = MeanOutmigrationsPerResearcher, color = incomelevel, text = countryname)) +
+  geom_point(size = 4, alpha = 0.7, aes(group = countryname)) +
+  scale_color_viridis_d(option = "D", direction = -1) +  
+
+  # Linien für jedes Einkommensniveau hinzufügen
+  geom_smooth(aes(group = incomelevel, color = incomelevel), 
+              method = "lm", se = FALSE, linetype = "dashed", size = 0.5, inherit.aes = TRUE) +
+
+  labs(
+    title = "Outmigrationrate vs. Academic Freedom",
+    subtitle = "Mean of freedom to research and teach, academic exchange, institutional autonomy, campus integrity,...",
+    caption = "Quelle: Scopus",
+    x = "Academic Freedom Index",
+    y = "Mean Outmigrations per 100 Researchers"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 8),
+    axis.title = element_text(size = 14)
+  )
+
+print(temp_env$q)
+
+```
+
+### Openalex
+
+```{r}
+#| label: "Verhältnisses der Forscher zur Gesamtbevölkerung für jedes Land (Openalex)"
+#| figure: "Durchschnitt von v2cafres, v2cafexch, und v2cainsaut (Openalex)"
+
+# Notwendige Bibliotheken laden
+library(dplyr)
+library(ggplot2) 
+library(plotly)
+library(viridis) # Hinzufügen der viridis-Bibliothek
+
+temp_env <- new.env()
+
+# Verkleinern des Datensatzes auf die angegebenen Variablen
+temp_env$cafres_scopus <- merged_openalex %>%
+  select(countrycode, countryname, year, population, 
+         padded_population_of_researchers, netmigration, number_of_outmigrations, number_of_inmigrations, v2xca_academ)
+
+# Berechnen des Verhältnisses der Forscher zur Gesamtbevölkerung für jedes Land
+temp_env$cafres_scopus <- temp_env$cafres_scopus %>%
+  mutate(researchers_per_capita = padded_population_of_researchers / population * 100000)
+
+# Berechnen des Verhältnisses der Auswanderungen zur Gesamtbevölkerung für jedes Land
+temp_env$cafres_scopus <- temp_env$cafres_scopus %>%
+  mutate(number_of_outmigrations = number_of_outmigrations / population * 100000)
+
+# Berechnen des Mittelwerts der Forscher pro Kopf und der Anzahl der Abwanderungen für jedes Land
+temp_env$Outmigrations_scholars <- temp_env$cafres_scopus %>%
+  group_by(countrycode, countryname) %>%
+  summarize(
+    MeanResearchersPerCapita = mean(researchers_per_capita, na.rm = TRUE),
+    MeanOutmigrations = mean(number_of_outmigrations, na.rm = TRUE),
+    MeanAcademicFreedomIndex = mean(v2xca_academ, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# Filter für den akademischen Freiheitsindex im Bereich von 0 bis 1
+temp_env$Outmigrations_scholars <- temp_env$Outmigrations_scholars %>%
+  filter(MeanAcademicFreedomIndex >= 0 & MeanAcademicFreedomIndex <= 1)
+
+# Erstellen der Grafik mit ggplot2
+temp_env$q <- ggplot(temp_env$Outmigrations_scholars, aes(x = MeanResearchersPerCapita, y = MeanOutmigrations, color = MeanAcademicFreedomIndex, text = countryname)) +
+  geom_point(size = 4, alpha = 0.7, aes(group = countrycode)) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed") +
+  scale_color_viridis_c(option = "D", limits = c(0, 1)) + # Verwendung der Viridis-Farbskala
+  labs(
+    title = "Researchers and Outmigrations with Academic Freedom",
+    subtitle = "Mean of freedom to research and teach, academic exchange, institutional autonomy, campus integrity,...",
+    caption = "Quelle: OpenAlex",
+    x = "Mean Researchers per 100k",
+    y = "Mean Outmigrations per 100k",
+    color = "Academic Freedom Index"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+     plot.subtitle = element_text(hjust = 0.5, size = 8),
+    axis.title = element_text(size = 14),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 10)
+  )
+
+# Umwandeln der ggplot2-Grafik in eine interaktive plotly-Grafik
+temp_env$mean_indices_om_scopus <- ggplotly(temp_env$q, tooltip = "text")
+
+# Grafik anzeigen
+#print(temp_env$q)
+
+# Umwandeln der ggplot2-Grafik in eine interaktive plotly-Grafik
+temp_env$interactive_plot <- ggplotly(temp_env$q, tooltip = "text")
+
+# Zeige die interaktive plotly-Grafik an
+#temp_env$interactive_plot
+
+
+
+```
+
+```{r}
+#| label: Outmigrationrate vs. Akademische Freiheit (Openalex)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(viridis)
+
+# Verkleinern des Datensatzes auf die angegebenen Variablen
+temp_env$academ_openalex <- merged_openalex %>%
+  select(countrycode, countryname, year, population, 
+         padded_population_of_researchers, number_of_outmigrations, incomelevel, v2xca_academ)
+
+# Berechnen der Auswanderungen relativ zur Anzahl der Forscher pro Bevölkerung für jedes Land
+temp_env$academ_openalex <- temp_env$academ_openalex %>%
+  mutate(outmigrations_per_researcher = number_of_outmigrations / padded_population_of_researchers * 100)
+
+# Berechnen des Mittelwerts der Forscher pro Kopf und der Anzahl der Abwanderungen für jedes Land
+temp_env$Outmigrations_scholars <- temp_env$academ_openalex %>%
+  group_by(countrycode, countryname, incomelevel) %>%
+  filter(incomelevel != "INX") %>%
+  summarize(
+    MeanOutmigrationsPerResearcher = mean(outmigrations_per_researcher, na.rm = TRUE),
+    MeanAcademicFreedomIndex = mean(v2xca_academ, na.rm = TRUE),  # Angepasster Indikator
+    .groups = 'drop'
+  ) 
+
+# Filter für den Demokratie-Index im Bereich von 0 bis 1
+temp_env$Outmigrations_scholars <- temp_env$Outmigrations_scholars %>%
+  filter(MeanAcademicFreedomIndex >= 0 & MeanAcademicFreedomIndex <= 1)
+
+# Setze die Reihenfolge für incomelevel fest
+temp_env$Outmigrations_scholars$incomelevel <- factor(
+  temp_env$Outmigrations_scholars$incomelevel,
+  levels = c("HIC", "UMC", "LMC", "LIC")
+)
+
+# Erstellen der Grafik mit ggplot2
+temp_env$q <- ggplot(temp_env$Outmigrations_scholars, 
+                     aes(x = MeanAcademicFreedomIndex, y = MeanOutmigrationsPerResearcher, color = incomelevel, text = countryname)) +
+  geom_point(size = 4, alpha = 0.7, aes(group = countryname)) +
+  scale_color_viridis_d(option = "D", direction = -1) +  
+
+  # Linien für jedes Einkommensniveau hinzufügen
+  geom_smooth(aes(group = incomelevel, color = incomelevel), 
+              method = "lm", se = FALSE, linetype = "dashed", size = 0.5, inherit.aes = TRUE) +
+
+  labs(
+    title = "Outmigrationrate vs. Academic Freedom",
+    subtitle = "Mean of freedom to research and teach, academic exchange, institutional autonomy, campus integrity,...",
+    caption = "Quelle: Openalex",
+    x = "Academic Freedom Index",
+    y = "Mean Outmigrations per 100 Researchers"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 8),
+    axis.title = element_text(size = 14)
+  )
+
+print(temp_env$q)
+
+```
+:::
+
+### Zusammenführen von Scopus und Openalex
+
+```{r}
+#| label: Zusammenführen von Scopus und Openalex
+# Zusammenführen von OpenAlex und Scopus-Daten basierend auf ISO3-Code und Jahr
+dfmerged <- full_join(
+  openalex_data, scopus_data, 
+  by = c("countrycode", "year"), 
+  suffix = c("_openalex", "_scopus")
+)
+
+# Berechnungen hinzufügen (Migration pro Forscher und pro Bevölkerung)
+dfmerged <- dfmerged %>%
+  mutate(
+    inmigrate_openalex = number_of_inmigrations_openalex / padded_population_of_researchers_openalex,
+    inmigrate_scopus = number_of_inmigrations_scopus / padded_population_of_researchers_scopus,
+    outmigrate_openalex = number_of_outmigrations_openalex / padded_population_of_researchers_openalex,
+    outmigrate_scopus = number_of_outmigrations_scopus / padded_population_of_researchers_scopus,
+    inmigrate_openalex_pop = number_of_inmigrations_openalex / population_openalex,
+    inmigrate_scopus_pop = number_of_inmigrations_scopus / population_scopus,
+    netmigrate_openalex = netmigration_openalex / padded_population_of_researchers_openalex,
+    netmigrate_scopus = netmigration_scopus / padded_population_of_researchers_scopus
+  )
+
+
+```
+
+::: panel-tabset
+### Netto-Migration
+
+-   Scopus: USA hat dauerhaft mehr Einwanderungen als Auswanderungen, während China bis auf die letzten 5 Jahre mehr Auswanderungen verzeichnet
+-   Openalex: USA in in den letzten Jahren mehr Einwanderungen, wobei zuletzt auf ähnlichem Niveau wie von 20 Jahren um die 0 Netto Migration. China hat auschließlich positive Netto Migration
+
+```{r}
+#| label: Netto-Migration
+# Notwendige Bibliotheken laden
+library(dplyr)
+library(ggplot2)
+
+# Entferne alle NA-Werte für Netto-Migration von OpenAlex und Scopus
+dfmerged_filtered <- dfmerged %>%
+  filter(!is.na(netmigration_openalex) & !is.na(netmigration_scopus))
+
+# Scatterplot für Netto-Migration (OpenAlex vs. Scopus) mit Formen für USA und China, andere Punkte als einfache Kreise
+ggplot(dfmerged_filtered, aes(x = netmigration_openalex, y = netmigration_scopus, color = year)) +
+  geom_point(aes(shape = ifelse(countrycode == "USA", "USA", 
+                         ifelse(countrycode == "CHN", "China", "Other"))), 
+             alpha = 0.8, size = 2) + 
+  geom_hline(yintercept = 0, color = "darkgrey", size = 0.1) +  # Horizontale Null-Linie
+  geom_vline(xintercept = 0, color = "darkgrey", size = 0.1) +  # Vertikale Null-Linie
+  geom_smooth(method = "lm", se = FALSE, color = "grey", alpha = 0.2) +  
+  scale_color_gradient(low = "blue", high = "green") +  
+  scale_shape_manual(values = c("USA" = 15, "China" = 17, "Other" = 16), drop = TRUE) +  
+  labs(
+    title = "Netto-Migration: OpenAlex vs. Scopus",
+    x = "Netto-Migration OpenAlex",
+    y = "Netto-Migration Scopus",
+    shape = "Länder",  
+    color = "Jahr"  
+  ) +
+  theme_minimal() +  
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  
+    legend.position = "right"  
+  )
+
+```
+
+```{r}
+#| label: Netto-Migrationsrate 
+# Entferne alle NA-Werte für Netto-Migration von OpenAlex und Scopus
+dfmerged2_filtered <- dfmerged %>%
+  filter(!is.na(netmigrationrate_openalex) & !is.na(netmigrationrate_scopus))
+
+# Scatterplot mit Null-Linien auf der x- und y-Achse
+ggplot(dfmerged_filtered, aes(x = netmigrationrate_openalex, y = netmigrationrate_scopus, color = year)) +
+  geom_point(aes(shape = ifelse(countrycode == "USA", "USA", 
+                         ifelse(countrycode == "CHN", "China", "Other"))), 
+             alpha = 0.8, size = 2) + 
+  geom_hline(yintercept = 0, color = "darkgrey", size = 0.1) +  # Horizontale Null-Linie
+  geom_vline(xintercept = 0, color = "darkgrey", size = 0.1) +  # Vertikale Null-Linie
+  geom_smooth(method = "lm", se = FALSE, color = "grey", alpha = 0.2) +  
+  scale_color_gradient(low = "blue", high = "green") +  
+  scale_shape_manual(values = c("USA" = 15, "China" = 17, "Other" = 16), drop = TRUE) +  
+  labs(
+    title = "Netto-Migrationsrate: OpenAlex vs. Scopus",
+    x = "Netto-Migrationsrate OpenAlex",
+    y = "Netto-Migrationsrate Scopus",
+    shape = "Länder",  
+    color = "Jahr"  
+  ) +
+  theme_minimal() +  
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  
+    legend.position = "right"  
+  )
+
+
+```
+
+In diesem Code wird eine Weltkarte mit der kombinierten Netto-Migrationsrate von Wissenschaftlern aus den Datenquellen OpenAlex und Scopus visualisiert. Dazu werden die Migrationsraten pro Land gemittelt, mit einer Weltkarte verknüpft und farblich codiert (rot für Brain Drain, grün für Brain Gain)
+
+```{r}
+#| label: Kombinierte Netto-Migrationsrate blue
+# Notwendige Pakete laden
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+# Daten kombinieren: Mittelwert der Netto-Migrationsrate von OpenAlex und Scopus
+combined_nettomigration <- dfmerged2_filtered %>%
+  group_by(countrycode) %>%
+  summarise(
+    combined_netmigrationrate = mean(c(netmigrationrate_openalex, netmigrationrate_scopus), na.rm = TRUE)
+  )
+
+# Weltkarte als sf-Objekt laden
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Zusammenführen der Weltkarte mit den kombinierten Daten
+world_data <- world %>%
+  left_join(combined_nettomigration, by = c("iso_a3_eh" = "countrycode")) %>%
+  filter(name != "Antarctica")
+
+# Erstellen der kombinierten Weltkarte mit angepasster Farbskala
+ggplot(data = world_data) +
+  geom_sf(aes(fill = combined_netmigrationrate), color = NA) +
+  scale_fill_gradient2(
+    low = "#E41A1C",      # Brain Drain 
+    mid = "lightblue",# Neutrale Werte
+    high = "#4DAF4A",   # Brain Gain
+    midpoint = 0,     # Nullpunkt als hellblau definieren
+    limits = c(-0.01, 0.01), oob = scales::squish,
+    name = "Kombinierte Netto-Migrationsrate"
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Kombinierte Netto-Migrationsrate: OpenAlex und Scopus",
+    caption = "Quelle: OpenAlex und Scopus",
+    fill = "Net Migration Rate"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.title = element_text(size = 8),
+    legend.text = element_text(size = 6),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")  # Robinson-Projektion für eine schöne Darstellung
+
+
+
+```
+
+```{r}
+#| label: Netto-Migrationsrate von OpenAlex und Scopus
+# Notwendige Bibliotheken laden
+library(dplyr)
+library(ggplot2)
+library(plotly)
+
+# Entferne alle NA-Werte für Netto-Migrationsrate von OpenAlex und Scopus
+dfmerged2_filtered <- dfmerged %>%
+  filter(!is.na(netmigrationrate_openalex) & !is.na(netmigrationrate_scopus))
+
+# Scatterplot mit ggplot erstellen, Ländername in Tooltip hinzufügen
+scatterplot <- ggplot(dfmerged2_filtered, 
+                      aes(x = netmigrationrate_openalex, 
+                          y = netmigrationrate_scopus, 
+                          color = year,
+                          text = paste("Land: ", countrycode, 
+                                       "<br>Netto-Migrationsrate OpenAlex: ", netmigrationrate_openalex, 
+                                       "<br>Netto-Migrationsrate Scopus: ", netmigrationrate_scopus, 
+                                       "<br>Jahr: ", year))) +  # Tooltip mit Land und weiteren Infos
+  geom_point(aes(shape = ifelse(countrycode == "USA", "USA", 
+                         ifelse(countrycode == "CHN", "China", "Other"))), 
+             alpha = 0.8, size = 2) + 
+  geom_smooth(method = "lm", se = FALSE, color = "grey", alpha = 0.2) +  
+  scale_color_gradient(low = "blue", high = "green") +  
+  scale_shape_manual(values = c("USA" = 15, "China" = 17, "Other" = 16), drop = TRUE) +  
+  labs(
+    title = "Netto-Migrationsrate: OpenAlex vs. Scopus",
+    x = "Netto-Migrationsrate OpenAlex",
+    y = "Netto-Migrationsrate Scopus",
+    shape = "Länder",  
+    color = "Jahr"  
+  ) +
+  theme_minimal() +  
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  
+    legend.position = "right"  
+  )
+
+# ggplot-Plot in einen interaktiven Plot umwandeln und Tooltips anzeigen
+interactive_plot <- ggplotly(scatterplot, tooltip = "text")
+
+# Interaktiven Plot anzeigen
+#interactive_plot
+
+
+```
+
+```{r}
+#| label: Streuung der Nettomigrationsrate pro Jahr
+# Berechnung der Streuung (Standardabweichung) pro Jahr
+yearly_spread <- dfmerged2_filtered %>%
+  group_by(year) %>%
+  summarise(
+    sd_openalex = sd(netmigrationrate_openalex, na.rm = TRUE),  # Standardabweichung OpenAlex
+    sd_scopus = sd(netmigrationrate_scopus, na.rm = TRUE)       # Standardabweichung Scopus
+  )
+
+# Entwicklung der Streuung über die Jahre plotten
+library(ggplot2)
+ggplot(yearly_spread, aes(x = year)) +
+  geom_line(aes(y = sd_openalex, color = "OpenAlex"), size = 1) +
+  geom_line(aes(y = sd_scopus, color = "Scopus"), size = 1) +
+  labs(
+    title = "Streuung der Netto-Migrationsrate pro Jahr",
+    x = "Jahr",
+    y = "Standardabweichung",
+    color = "Datenquelle"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("OpenAlex" = "blue", "Scopus" = "green")) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+```
+
+### Auswanderung
+
+```{r}
+#| label: Auswanderung
+# Scatterplot für Auswanderungsrate (OpenAlex vs. Scopus)
+ggplot(dfmerged, aes(x = outmigrate_openalex, y = outmigrate_scopus)) +
+  geom_point(aes(shape = ifelse(countrycode == "USA", "USA", 
+                         ifelse(countrycode == "CHN", "China", "Other"))),
+             color = "red", alpha = 0.8, size = 2) +  # Punkte für alle Länder
+  geom_smooth(method = "lm", se = FALSE, color = "grey", alpha = 0.2) +  # Trendlinie hinzufügen
+  scale_shape_manual(values = c("USA" = 15, "China" = 17, "Other" = 16), drop = TRUE) +  # Formen definieren
+  labs(
+    title = "Auswanderungsrate: OpenAlex vs. Scopus",
+    x = "Auswanderungsrate OpenAlex",
+    y = "Auswanderungsrate Scopus",
+    shape = "Länder"  # Legendenname für die Formen
+  ) +
+  theme_minimal() + 
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  # Zentrieren des Titels
+    legend.position = "right"  # Position der Legende
+  ) +
+  xlim(0, 0.6) +  # Bereich der x-Achse setzen
+  ylim(0, 0.6)    # Bereich der y-Achse setzen
+
+```
+
+### Einwanderung
+
+```{r}
+#| label: Einwanderung
+# Scatterplot für Einwanderungsrate (OpenAlex vs. Scopus)
+ggplot(dfmerged, aes(x = inmigrate_openalex, y = inmigrate_scopus)) +
+  geom_point(color = "blue") +
+  geom_smooth(method = "lm", se = FALSE, color = "grey") +
+  labs(title = "Einwanderungsrate: OpenAlex vs. Scopus",
+       x = "Einwanderungsrate OpenAlex",
+       y = "Einwanderungsrate Scopus") +
+  theme_minimal() + 
+    theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  # Zentrierter Titel
+    legend.position = "right"  # Legende rechts platzieren
+  )  +
+  xlim(0,0.6) +  
+  ylim(0,0.6)
+```
+
+### Forscherzahl
+
+-   China 2018: 625806 & 1883727
+-   USA 2018: 1266850 & 1481431
+
+```{r}
+#| label: Forscherzahl China und USA 
+# Scatterplot für Forscheranzahl (OpenAlex vs. Scopus) mit Markierung für USA und China
+ggplot(dfmerged, aes(x = padded_population_of_researchers_openalex, y = padded_population_of_researchers_scopus)) +
+  geom_point(aes(shape = ifelse(countrycode == "USA", "USA", 
+                         ifelse(countrycode == "CHN", "China", "Other"))),
+             color = "black", alpha = 0.8, size = 2) +  # Punkte für alle Länder
+  geom_smooth(method = "lm", se = FALSE, color = "grey", alpha = 0.2) +  # Trendlinie hinzufügen
+  scale_shape_manual(values = c("USA" = 15, "China" = 17, "Other" = 16), drop = TRUE) +  # Formen definieren
+  labs(
+    title = "Wissenschaftler: OpenAlex vs. Scopus",
+    x = "Wissenschaftler OpenAlex",
+    y = "Wissenscahftler Scopus",
+    shape = "Länder"  # Legendenname für die Formen
+  ) +
+  theme_minimal() + 
+  scale_y_continuous(labels = label_number(big.mark = ".", decimal.mark = ",")) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  # Zentrierter Titel
+    legend.position = "right"  # Legende rechts platzieren
+  )
+
+
+
+
+```
+
+```{r}
+
+# Notwendige Bibliothek laden
+library(dplyr)
+
+# Erstellen einer Vergleichstabelle für Migration (OpenAlex vs. Scopus)
+migration_table <- dfmerged %>%
+  select(countrycode, year, padded_population_of_researchers_openalex, padded_population_of_researchers_scopus) %>%
+  rename(
+    "Country Code" = countrycode,
+    "Year" = year,
+    "Researchers OpenAlex" = padded_population_of_researchers_openalex,
+    "Researchers Scopus" = padded_population_of_researchers_scopus
+  )
+
+# Ausgabe der Tabelle
+#print(migration_table)
+
+
+
+```
+
+### Forscherzahl pro Bevölkerung Switzerland
+
+```{r}
+#| label: "Forscherzahl pro Bevölkerung Switzerland"
+# Scatterplot für Forscheranzahl pro Bevölkerung (OpenAlex vs. Scopus) mit Markierung für USA und China
+ggplot(dfmerged, aes(x = padded_population_of_researchers_openalex / population_openalex, 
+                     y = padded_population_of_researchers_scopus / population_scopus)) +
+  geom_point(aes(shape = ifelse(countrycode == "CHE", "Switzerland", 
+                         ifelse(countrycode == "HKG", "Hong Kong SAR, China", "Other"))),
+             color = "black", alpha = 0.8, size = 2) +  # Punkte für alle Länder
+  geom_smooth(method = "lm", se = FALSE, color = "grey", alpha = 0.2) +  # Trendlinie hinzufügen
+  scale_shape_manual(values = c("Switzerland" = 15, "Hong Kong SAR, China" = 17, "Other" = 16), drop = TRUE) +  # Formen definieren
+  labs(
+    title = "Wissenschaftler pro Bevölkerung: OpenAlex vs. Scopus",
+    x = "Wissenschaftler pro Bevölkerung OpenAlex",
+    y = "Wissenschaftler pro Bevölkerung Scopus",
+    shape = "Länder"  # Legendenname für die Formen
+  ) +
+  theme_minimal() + 
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  # Zentrierter Titel
+    legend.position = "right"  # Legende rechts platzieren
+  )
+
+
+```
+:::
+
+### Scopus Korr
+
+```{r}
+#| label: Korrelation zwischen numerischen Variablen Scopus 
+
+if (!require(corrplot)) install.packages("corrplot")
+library(corrplot)
+
+# Erstellen eines temporären Environments
+temp_env <- new.env()
+
+numeric_vars <- c("padded_population_of_researchers", "number_of_inmigrations", 
+                  "number_of_outmigrations", "netmigration", "outmigrationrate", 
+                  "inmigrationrate", "netmigrationrate", "gdp_per_capita", 
+                  "population")
+
+
+# Berechnung und Visualisierung der Korrelationen für den Scopus-Datensatz
+
+# Berechne die Korrelationen für scopus_data
+temp_env$correlations_scopus <- cor(scopus_data[, numeric_vars], use = "complete.obs")
+
+# Visualisiere das Korrelogramm für scopus_data
+
+corrplot(temp_env$correlations_scopus, method = "color", type = "upper", tl.cex = 0.8)
+
+
+#Dunkelblau: Starke positive Korrelation (z. B. nahe 1).
+#Weiß: Keine Korrelation (0).
+#Dunkelrot: Starke negative Korrelation (z. B. nahe -1).
+
+# Wenn einige Variablen hohe Korrelationen aufweisen, könnte dies auf Redundanz oder Multikollinearität hinweisen, was die Interpretation erschweren könnte
+
+```
+
+### Openalex Korr
+
+```{r}
+#| label: Korrelation zwischen numerischen Variablen Openalex
+# Berechnung und Visualisierung der Korrelationen für den OpenAlex-Datensatz
+
+temp_env <- new.env()
+
+# Berechne die Korrelationen für openalex_data
+temp_env$correlations_openalex <- cor(openalex_data[, numeric_vars], use = "complete.obs")
+
+# Visualisiere das Korrelogramm für openalex_data
+corrplot(temp_env$correlations_openalex, method = "color", type = "upper", tl.cex = 0.8)
+```
+
+### Einkommensgruppen
+
+```{r}
+#| label: Weltkarte mit Regionen INCome 
+library(dplyr)
+
+
+# Hinzufügen einer Quelle zu den Datensätzen
+scopus_flows <- scopus_flows %>% mutate(source = "Scopus")
+openalex_flows <- openalex_flows %>% mutate(source = "OpenAlex")
+
+# Kombination der beiden Datensätze
+combined_flows <- bind_rows(scopus_flows, openalex_flows)
+
+
+library(ggplot2)
+library(dplyr)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+
+# Weltkartendaten laden
+world_map <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Scopus-Daten mit der Weltkarte verbinden
+world_map <- world_map %>%
+  left_join(scopus_data, by = c("iso_a3_eh" = "countrycode"))  # Annahme: "countrycode" in scopus_data enthält ISO-3-Codes
+
+# Einteilung der Länder nach incomelevel als kategoriale Variable
+income_levels <- c("LIC" = "Low Income", "LMC" = "Lower Middle Income",
+                   "UMC" = "Upper Middle Income", "HIC" = "High Income")
+
+world_map <- world_map %>%
+  mutate(income_group = factor(incomelevel, 
+                               levels = c("LIC", "LMC", "UMC" ,"HIC"),
+                               labels = c("Low Income", "Lower Middle Income", "Upper Middle Income", "High Income")))
+
+# Farben für die Einkommensgruppen zuweisen
+group_colors <- c(
+  "Low Income" = "#FFEDA0",
+  "Lower Middle Income" = "#FED976",
+  "Upper Middle Income" = "#FEB24C",
+  "High Income" = "#FD8D3C"
+)
+
+# Karte erstellen
+ggplot(data = world_map) +
+  geom_sf(aes(fill = income_group), color = NA) +  # Gruppen farblich markieren
+  scale_fill_manual(values = group_colors, name = "Einkommensgruppen") +
+  labs(
+    title = "Weltkarte mit Gruppierung nach Einkommenslevel",
+    fill = "Einkommensgruppe"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 7),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  ) +
+  coord_sf(crs = "+proj=robin")  
+```
